@@ -9,11 +9,12 @@
 //  overflow risk in downstream pagination arithmetic.
 //
 
-/// The largest page/offset/limit the tools accept (#1612). Far beyond any real
+/// The largest page/offset values the tools accept (#1612). Far beyond any real
 /// dataset, but small enough that pagination arithmetic can never overflow.
 public let maxPaginationPage = 100_000
 public let maxPaginationStart = 10_000_000
-public let maxPaginationLimit = 1000
+/// CoderPad Screen v1.1 documents 50 as the maximum tests-page size.
+public let maxPaginationLimit = 50
 
 public func pageValidationError(_ page: Int?) -> String? {
     guard let page else { return nil }
