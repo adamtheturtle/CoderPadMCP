@@ -127,8 +127,8 @@ waiting for a library release.
 
 ## Requirements
 
-- Swift 6.1+
-- macOS 13+ or Linux
+- Swift 6.2+
+- macOS 15+ or Linux
 
 ## License
 

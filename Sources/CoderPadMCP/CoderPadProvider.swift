@@ -26,8 +26,7 @@
 //  opted in (#502). There is no delete tool: deletion stays a human action in the app.
 //
 
-// swiftlint:disable file_length
-
+import CoderPadKit
 import Foundation
 import MCP
 
@@ -41,66 +40,18 @@ private let interviewWriteResponseLimit = 1 * 1024 * 1024
 
 // MARK: - CoderPad REST
 
-private struct ResponseTooLargeError: LocalizedError {
-    let limit: Int
-
-    var errorDescription: String? {
-        "Response exceeded the \(limit)-byte safety limit."
-    }
-}
-
-private func cappedData(
-    for request: URLRequest,
-    limit: Int,
-    session: URLSession = .shared,
-) async throws -> (Data, URLResponse) {
-    #if os(Linux)
-        let (data, response) = try await session.data(for: request)
-        guard data.count <= limit else { throw ResponseTooLargeError(limit: limit) }
-
-        return (data, response)
-    #else
-        let (bytes, response) = try await session.bytes(for: request)
-        if response.expectedContentLength > Int64(limit) {
-            throw ResponseTooLargeError(limit: limit)
-        }
-
-        var data = Data()
-        if response.expectedContentLength > 0 {
-            data.reserveCapacity(min(Int(response.expectedContentLength), limit))
-        }
-        for try await byte in bytes {
-            guard data.count < limit else { throw ResponseTooLargeError(limit: limit) }
-
-            data.append(byte)
-        }
-        return (data, response)
-    #endif
-}
-
 /// Performs an authenticated GET against an account and returns the status and raw body.
 private func apiGet(_ path: String, account: MCPAccount, query: [URLQueryItem] = []) async -> APIResponse {
-    guard var comps = URLComponents(
-        url: account.baseURL.appending(path: path), resolvingAgainstBaseURL: false,
-    ) else {
-        return APIResponse(status: 0, body: "Could not build a URL for \(path).")
-    }
-
-    let items = query.filter { ($0.value ?? "").isEmpty == false }
-    if !items.isEmpty {
-        comps.queryItems = items
-    }
-    guard let url = comps.url else {
-        return APIResponse(status: 0, body: "Could not build a URL for \(path).")
-    }
-
-    var request = URLRequest(url: url)
-    request.setValue("Bearer \(account.apiKey)", forHTTPHeaderField: "Authorization")
-    request.setValue("application/json", forHTTPHeaderField: "Accept")
     do {
-        let (data, response) = try await cappedData(for: request, limit: interviewReadResponseLimit)
-        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        return APIResponse(status: status, data: data)
+        let response = try await CoderPadClient(
+            apiKey: account.apiKey,
+            baseURL: account.baseURL,
+        ).rawRequest(
+            path: path,
+            query: query,
+            responseLimit: interviewReadResponseLimit,
+        )
+        return APIResponse(status: response.status, data: response.data)
     } catch {
         return APIResponse(status: 0, body: "Request to \(path) failed: \(error.localizedDescription)")
     }
@@ -119,25 +70,21 @@ private func errorResult(_ message: String) -> CallTool.Result {
 
 /// Performs an authenticated write (POST/PUT) against an account with a JSON body.
 private func apiSend(_ method: String, _ path: String, account: MCPAccount, body: [String: Any]) async -> APIResponse {
-    guard let url = URLComponents(
-        url: account.baseURL.appending(path: path), resolvingAgainstBaseURL: false,
-    )?.url else {
-        return APIResponse(status: 0, body: "Could not build a URL for \(path).")
-    }
     guard let payload = try? JSONSerialization.data(withJSONObject: body) else {
         return APIResponse(status: 0, body: "Could not encode the request body.")
     }
 
-    var request = URLRequest(url: url)
-    request.httpMethod = method
-    request.httpBody = payload
-    request.setValue("Bearer \(account.apiKey)", forHTTPHeaderField: "Authorization")
-    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-    request.setValue("application/json", forHTTPHeaderField: "Accept")
     do {
-        let (data, response) = try await cappedData(for: request, limit: interviewWriteResponseLimit)
-        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        return APIResponse(status: status, data: data)
+        let response = try await CoderPadClient(
+            apiKey: account.apiKey,
+            baseURL: account.baseURL,
+        ).rawRequest(
+            method: method,
+            path: path,
+            body: payload,
+            responseLimit: interviewWriteResponseLimit,
+        )
+        return APIResponse(status: response.status, data: response.data)
     } catch {
         return APIResponse(status: 0, body: "Request to \(path) failed: \(error.localizedDescription)")
     }

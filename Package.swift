@@ -1,9 +1,9 @@
-// swift-tools-version: 6.1
+// swift-tools-version: 6.2
 import PackageDescription
 
 let package = Package(
     name: "CoderPadMCP",
-    platforms: [.macOS(.v13)],
+    platforms: [.macOS(.v15)],
     products: [
         .library(name: "CoderPadMCP", targets: ["CoderPadMCP"]),
         .library(name: "CoderPadToolCore", targets: ["CoderPadToolCore"]),
@@ -12,6 +12,7 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", from: "0.12.1"),
         .package(url: "https://github.com/adamtheturtle/MCPKit.git", from: "0.1.0"),
+        .package(url: "https://github.com/adamtheturtle/CoderPadKit.git", from: "0.5.9"),
         .package(url: "https://github.com/apple/swift-docc-plugin", from: "1.4.3"),
     ],
     targets: [
@@ -20,6 +21,7 @@ let package = Package(
             name: "CoderPadMCP",
             dependencies: [
                 "CoderPadToolCore",
+                .product(name: "CoderPadKit", package: "CoderPadKit"),
                 .product(name: "MCP", package: "swift-sdk"),
                 .product(name: "MCPKit", package: "MCPKit"),
             ],
