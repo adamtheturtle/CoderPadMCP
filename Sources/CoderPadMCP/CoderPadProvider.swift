@@ -7,8 +7,7 @@
 //  questions straight from the REST API, so an MCP-aware assistant can answer questions
 //  about your interviews without the macOS app being involved.
 //
-//  This file is the thin executable: it loads the account configuration, makes the REST
-//  calls, and wires up the stdio server. The network-free logic (account resolution,
+//  It loads configuration and wires up the stdio server. The network-free logic (account resolution,
 //  argument coercion, tool schemas, and the pad code/count/aggregate transforms) lives
 //  in the CoderPadMCP library so it can be unit-tested (#522).
 //
@@ -79,7 +78,9 @@ private func apiGet(_ path: String, account: MCPAccount, query: [URLQueryItem] =
     }
 
     let items = query.filter { ($0.value ?? "").isEmpty == false }
-    if !items.isEmpty { comps.queryItems = items }
+    if !items.isEmpty {
+        comps.queryItems = items
+    }
     guard let url = comps.url else {
         return APIResponse(status: 0, body: "Could not build a URL for \(path).")
     }
@@ -149,7 +150,9 @@ private func screenGet(_ path: String, account: MCPAccount, query: [URLQueryItem
     }
 
     let items = query.filter { ($0.value ?? "").isEmpty == false }
-    if !items.isEmpty { comps.queryItems = items }
+    if !items.isEmpty {
+        comps.queryItems = items
+    }
     guard let url = comps.url else {
         return APIResponse(status: 0, body: "Could not build a URL for \(path).")
     }
@@ -220,7 +223,9 @@ private func pagingQuery(_ arguments: [String: Value]?) -> [URLQueryItem] {
     if let page = strictIntArgument(arguments, "page") {
         query.append(URLQueryItem(name: "page", value: String(page)))
     }
-    if let sort = stringArgument(arguments, "sort") { query.append(URLQueryItem(name: "sort", value: sort)) }
+    if let sort = stringArgument(arguments, "sort") {
+        query.append(URLQueryItem(name: "sort", value: sort))
+    }
     return query
 }
 
@@ -810,7 +815,9 @@ private func fetchAllPads(
     var records = RecordIdentityTracker()
     while scan.pagesFetched < maxPadPagesToFetch {
         var query: [URLQueryItem] = []
-        if let page { query.append(URLQueryItem(name: "page", value: page)) }
+        if let page {
+            query.append(URLQueryItem(name: "page", value: page))
+        }
         let response = await apiGet("/api/pads/", account: account, query: query)
         guard response.ok, let object = jsonObject(response.data) else {
             scan.error = response
@@ -832,7 +839,9 @@ private func fetchAllPads(
             }
         }
 
-        if scan.totalReported == nil { scan.totalReported = object["total"] as? Int }
+        if scan.totalReported == nil {
+            scan.totalReported = object["total"] as? Int
+        }
         consume(unique)
         scan.scanned += unique.count
         scan.pagesFetched += 1
@@ -859,7 +868,9 @@ private func countPads(
     let language = stringArgument(arguments, "language")
     let after = stringArgument(arguments, "created_after")
     let before = stringArgument(arguments, "created_before")
-    if let error = dateBoundValidationError(after: after, before: before) { return errorResult(error) }
+    if let error = dateBoundValidationError(after: after, before: before) {
+        return errorResult(error)
+    }
 
     // Built once for the whole list rather than re-normalizing the filter
     // values for every row (#2453).
@@ -870,10 +881,18 @@ private func countPads(
             matched += 1
         }
     }
-    if let error = scan.error { return toolResult(error) }
-    if let message = scan.invalidShape { return errorResult(message) }
-    if let message = scan.paginationError { return errorResult(message) }
-    if let message = scan.recordError { return errorResult(message) }
+    if let error = scan.error {
+        return toolResult(error)
+    }
+    if let message = scan.invalidShape {
+        return errorResult(message)
+    }
+    if let message = scan.paginationError {
+        return errorResult(message)
+    }
+    if let message = scan.recordError {
+        return errorResult(message)
+    }
 
     var result: [String: Any] = [
         "matched": matched,
@@ -881,10 +900,14 @@ private func countPads(
         "pages_fetched": scan.pagesFetched,
         "truncated": scan.truncated,
     ]
-    if let total = scan.totalReported { result["total_reported_by_api"] = total }
+    if let total = scan.totalReported {
+        result["total_reported_by_api"] = total
+    }
     var filters = filtersEcho(owner: owner, state: state, language: language)
     addDateFilters(&filters, after: after, before: before)
-    if !filters.isEmpty { result["filters"] = filters }
+    if !filters.isEmpty {
+        result["filters"] = filters
+    }
     if scan.truncated {
         result["note"] = "Hit the internal page cap (\(maxPadPagesToFetch) pages); the count covers only the pads scanned."
     }
@@ -913,7 +936,9 @@ private func aggregatePadsTool(
     let language = stringArgument(arguments, "language")
     let after = stringArgument(arguments, "created_after")
     let before = stringArgument(arguments, "created_before")
-    if let error = dateBoundValidationError(after: after, before: before) { return errorResult(error) }
+    if let error = dateBoundValidationError(after: after, before: before) {
+        return errorResult(error)
+    }
 
     // Built once for the whole list rather than re-normalizing the filter
     // values for every row (#2453).
@@ -928,10 +953,18 @@ private func aggregatePadsTool(
         matched += page.count
         accumulateCounts(&counts, pads: page, field: field)
     }
-    if let error = scan.error { return toolResult(error) }
-    if let message = scan.invalidShape { return errorResult(message) }
-    if let message = scan.paginationError { return errorResult(message) }
-    if let message = scan.recordError { return errorResult(message) }
+    if let error = scan.error {
+        return toolResult(error)
+    }
+    if let message = scan.invalidShape {
+        return errorResult(message)
+    }
+    if let message = scan.paginationError {
+        return errorResult(message)
+    }
+    if let message = scan.recordError {
+        return errorResult(message)
+    }
 
     let capped = topGroups(counts, limit: maxAggregateGroups)
     let groups: [[String: Any]] = capped.map { ["value": $0.value, "count": $0.count] }
@@ -947,7 +980,9 @@ private func aggregatePadsTool(
     ]
     var filters = filtersEcho(owner: owner, state: state, language: language)
     addDateFilters(&filters, after: after, before: before)
-    if !filters.isEmpty { result["filters"] = filters }
+    if !filters.isEmpty {
+        result["filters"] = filters
+    }
     if counts.count > capped.count {
         result["groups_truncated"] = true
         result["note"] = "Showing the top \(capped.count) of \(counts.count) groups by count."
@@ -960,13 +995,17 @@ private func aggregatePadsTool(
 }
 
 private func listPads(arguments: [String: Value]?, account: MCPAccount) async -> CallTool.Result {
-    if let error = pageValidationError(strictIntArgument(arguments, "page")) { return errorResult(error) }
+    if let error = pageValidationError(strictIntArgument(arguments, "page")) {
+        return errorResult(error)
+    }
 
     return await toolResult(apiGet("/api/pads/", account: account, query: pagingQuery(arguments)))
 }
 
 private func listPadsCompact(arguments: [String: Value]?, account: MCPAccount) async -> CallTool.Result {
-    if let error = pageValidationError(strictIntArgument(arguments, "page")) { return errorResult(error) }
+    if let error = pageValidationError(strictIntArgument(arguments, "page")) {
+        return errorResult(error)
+    }
 
     let response = await apiGet("/api/pads/", account: account, query: pagingQuery(arguments))
     guard response.ok, let object = jsonObject(response.data) else { return toolResult(response) }
@@ -977,8 +1016,12 @@ private func listPadsCompact(arguments: [String: Value]?, account: MCPAccount) a
     let compact = compactPads(pads)
 
     var result: [String: Any] = ["pads": compact, "count": compact.count]
-    if let next = object["next_page"], !(next is NSNull) { result["next_page"] = next }
-    if let total = object["total"], !(total is NSNull) { result["total"] = total }
+    if let next = object["next_page"], !(next is NSNull) {
+        result["next_page"] = next
+    }
+    if let total = object["total"], !(total is NSNull) {
+        result["total"] = total
+    }
 
     return jsonResult(result)
 }
@@ -1019,7 +1062,9 @@ private func fetchAllQuestions(
     var records = RecordIdentityTracker()
     while scan.pagesFetched < maxPadPagesToFetch {
         var query: [URLQueryItem] = []
-        if let page { query.append(URLQueryItem(name: "page", value: page)) }
+        if let page {
+            query.append(URLQueryItem(name: "page", value: page))
+        }
         let response = await apiGet("/api/questions/", account: account, query: query)
         guard response.ok, let object = jsonObject(response.data) else {
             scan.error = response
@@ -1043,7 +1088,9 @@ private func fetchAllQuestions(
             }
         }
 
-        if scan.totalReported == nil { scan.totalReported = object["total"] as? Int }
+        if scan.totalReported == nil {
+            scan.totalReported = object["total"] as? Int
+        }
         consume(unique)
         scan.scanned += unique.count
         scan.pagesFetched += 1
@@ -1071,7 +1118,9 @@ private func countQuestions(
     let type = stringArgument(arguments, "type")
     let after = stringArgument(arguments, "created_after")
     let before = stringArgument(arguments, "created_before")
-    if let error = dateBoundValidationError(after: after, before: before) { return errorResult(error) }
+    if let error = dateBoundValidationError(after: after, before: before) {
+        return errorResult(error)
+    }
 
     // Built once for the whole list rather than re-normalizing the filter
     // values for every row (#2452).
@@ -1084,10 +1133,18 @@ private func countQuestions(
             matched += 1
         }
     }
-    if let error = scan.error { return toolResult(error) }
-    if let message = scan.invalidShape { return errorResult(message) }
-    if let message = scan.paginationError { return errorResult(message) }
-    if let message = scan.recordError { return errorResult(message) }
+    if let error = scan.error {
+        return toolResult(error)
+    }
+    if let message = scan.invalidShape {
+        return errorResult(message)
+    }
+    if let message = scan.paginationError {
+        return errorResult(message)
+    }
+    if let message = scan.recordError {
+        return errorResult(message)
+    }
 
     var result: [String: Any] = [
         "matched": matched,
@@ -1095,10 +1152,14 @@ private func countQuestions(
         "pages_fetched": scan.pagesFetched,
         "truncated": scan.truncated,
     ]
-    if let total = scan.totalReported { result["total_reported_by_api"] = total }
+    if let total = scan.totalReported {
+        result["total_reported_by_api"] = total
+    }
     var filters = questionFiltersEcho(owner: owner, author: author, language: language, type: type)
     addDateFilters(&filters, after: after, before: before)
-    if !filters.isEmpty { result["filters"] = filters }
+    if !filters.isEmpty {
+        result["filters"] = filters
+    }
     if scan.truncated {
         result["note"] = "Hit the internal page cap (\(maxPadPagesToFetch) pages); the count covers only the questions scanned."
     }
@@ -1128,7 +1189,9 @@ private func aggregateQuestionsTool(
     let type = stringArgument(arguments, "type")
     let after = stringArgument(arguments, "created_after")
     let before = stringArgument(arguments, "created_before")
-    if let error = dateBoundValidationError(after: after, before: before) { return errorResult(error) }
+    if let error = dateBoundValidationError(after: after, before: before) {
+        return errorResult(error)
+    }
 
     // Built once for the whole list rather than re-normalizing the filter
     // values for every row (#2452).
@@ -1143,10 +1206,18 @@ private func aggregateQuestionsTool(
         matched += page.count
         accumulateCounts(&counts, pads: page, field: field)
     }
-    if let error = scan.error { return toolResult(error) }
-    if let message = scan.invalidShape { return errorResult(message) }
-    if let message = scan.paginationError { return errorResult(message) }
-    if let message = scan.recordError { return errorResult(message) }
+    if let error = scan.error {
+        return toolResult(error)
+    }
+    if let message = scan.invalidShape {
+        return errorResult(message)
+    }
+    if let message = scan.paginationError {
+        return errorResult(message)
+    }
+    if let message = scan.recordError {
+        return errorResult(message)
+    }
 
     let capped = topGroups(counts, limit: maxAggregateGroups)
     let groups: [[String: Any]] = capped.map { ["value": $0.value, "count": $0.count] }
@@ -1162,7 +1233,9 @@ private func aggregateQuestionsTool(
     ]
     var filters = questionFiltersEcho(owner: owner, author: author, language: language, type: type)
     addDateFilters(&filters, after: after, before: before)
-    if !filters.isEmpty { result["filters"] = filters }
+    if !filters.isEmpty {
+        result["filters"] = filters
+    }
     if counts.count > capped.count {
         result["groups_truncated"] = true
         result["note"] = "Showing the top \(capped.count) of \(counts.count) groups by count."
@@ -1175,13 +1248,17 @@ private func aggregateQuestionsTool(
 }
 
 private func listQuestions(arguments: [String: Value]?, account: MCPAccount) async -> CallTool.Result {
-    if let error = pageValidationError(strictIntArgument(arguments, "page")) { return errorResult(error) }
+    if let error = pageValidationError(strictIntArgument(arguments, "page")) {
+        return errorResult(error)
+    }
 
     return await toolResult(apiGet("/api/questions/", account: account, query: pagingQuery(arguments)))
 }
 
 private func listQuestionsCompact(arguments: [String: Value]?, account: MCPAccount) async -> CallTool.Result {
-    if let error = pageValidationError(strictIntArgument(arguments, "page")) { return errorResult(error) }
+    if let error = pageValidationError(strictIntArgument(arguments, "page")) {
+        return errorResult(error)
+    }
 
     let response = await apiGet("/api/questions/", account: account, query: pagingQuery(arguments))
     guard response.ok, let object = jsonObject(response.data) else { return toolResult(response) }
@@ -1192,8 +1269,12 @@ private func listQuestionsCompact(arguments: [String: Value]?, account: MCPAccou
     let compact = compactQuestions(questions)
 
     var result: [String: Any] = ["questions": compact, "count": compact.count]
-    if let next = object["next_page"], !(next is NSNull) { result["next_page"] = next }
-    if let total = object["total"], !(total is NSNull) { result["total"] = total }
+    if let next = object["next_page"], !(next is NSNull) {
+        result["next_page"] = next
+    }
+    if let total = object["total"], !(total is NSNull) {
+        result["total"] = total
+    }
 
     return jsonResult(result)
 }
@@ -1213,13 +1294,27 @@ private func createPad(arguments: [String: Value]?, account: MCPAccount) async -
     }
 
     var body: [String: Any] = [:]
-    if let title = optionalString(arguments, "title") { body["title"] = title }
-    if let language = optionalString(arguments, "language") { body["language"] = language }
-    if let owner = optionalString(arguments, "owner_email") { body["owner_email"] = owner }
-    if let contents = presentWriteString(arguments, "contents") { body["contents"] = contents }
-    if let notes = optionalString(arguments, "notes") { body["notes"] = notes }
-    if let questionID = strictIntArgument(arguments, "question_id") { body["question_id"] = questionID }
-    if let teamID = optionalString(arguments, "team_id") { body["team_id"] = teamID }
+    if let title = optionalString(arguments, "title") {
+        body["title"] = title
+    }
+    if let language = optionalString(arguments, "language") {
+        body["language"] = language
+    }
+    if let owner = optionalString(arguments, "owner_email") {
+        body["owner_email"] = owner
+    }
+    if let contents = presentWriteString(arguments, "contents") {
+        body["contents"] = contents
+    }
+    if let notes = optionalString(arguments, "notes") {
+        body["notes"] = notes
+    }
+    if let questionID = strictIntArgument(arguments, "question_id") {
+        body["question_id"] = questionID
+    }
+    if let teamID = optionalString(arguments, "team_id") {
+        body["team_id"] = teamID
+    }
 
     if strictDryRunArgument(arguments) == .value(true) {
         return dryRunResult(method: "POST", path: "/api/pads/", body: body)
@@ -1229,10 +1324,18 @@ private func createPad(arguments: [String: Value]?, account: MCPAccount) async -
 
 private func updatePad(id: String, arguments: [String: Value]?, account: MCPAccount) async -> CallTool.Result {
     var body: [String: Any] = [:]
-    if let title = presentWriteString(arguments, "title") { body["title"] = title }
-    if let notes = presentWriteString(arguments, "notes") { body["notes"] = notes }
-    if let owner = presentWriteString(arguments, "owner_email") { body["owner_email"] = owner }
-    if let language = presentWriteString(arguments, "language") { body["language"] = language }
+    if let title = presentWriteString(arguments, "title") {
+        body["title"] = title
+    }
+    if let notes = presentWriteString(arguments, "notes") {
+        body["notes"] = notes
+    }
+    if let owner = presentWriteString(arguments, "owner_email") {
+        body["owner_email"] = owner
+    }
+    if let language = presentWriteString(arguments, "language") {
+        body["language"] = language
+    }
     guard !body.isEmpty else {
         return missingArgument("at least one of title / notes / owner_email / language")
     }
@@ -1245,11 +1348,19 @@ private func updatePad(id: String, arguments: [String: Value]?, account: MCPAcco
 
 private func createQuestion(title: String, arguments: [String: Value]?, account: MCPAccount) async -> CallTool.Result {
     var question: [String: Any] = ["title": title]
-    if let language = optionalString(arguments, "language") { question["language"] = language }
+    if let language = optionalString(arguments, "language") {
+        question["language"] = language
+    }
     var body: [String: Any] = ["question": question]
-    if let description = presentWriteString(arguments, "description") { body["description"] = description }
-    if let solution = presentWriteString(arguments, "solution") { body["solution"] = solution }
-    if let contents = presentWriteString(arguments, "contents") { body["contents"] = contents }
+    if let description = presentWriteString(arguments, "description") {
+        body["description"] = description
+    }
+    if let solution = presentWriteString(arguments, "solution") {
+        body["solution"] = solution
+    }
+    if let contents = presentWriteString(arguments, "contents") {
+        body["contents"] = contents
+    }
 
     if strictDryRunArgument(arguments) == .value(true) {
         return dryRunResult(method: "POST", path: "/api/questions/", body: body)
@@ -1259,13 +1370,25 @@ private func createQuestion(title: String, arguments: [String: Value]?, account:
 
 private func updateQuestion(id: Int, arguments: [String: Value]?, account: MCPAccount) async -> CallTool.Result {
     var question: [String: Any] = [:]
-    if let title = presentWriteString(arguments, "title") { question["title"] = title }
-    if let language = presentWriteString(arguments, "language") { question["language"] = language }
+    if let title = presentWriteString(arguments, "title") {
+        question["title"] = title
+    }
+    if let language = presentWriteString(arguments, "language") {
+        question["language"] = language
+    }
     var body: [String: Any] = [:]
-    if !question.isEmpty { body["question"] = question }
-    if let description = presentWriteString(arguments, "description") { body["description"] = description }
-    if let solution = presentWriteString(arguments, "solution") { body["solution"] = solution }
-    if let contents = presentWriteString(arguments, "contents") { body["contents"] = contents }
+    if !question.isEmpty {
+        body["question"] = question
+    }
+    if let description = presentWriteString(arguments, "description") {
+        body["description"] = description
+    }
+    if let solution = presentWriteString(arguments, "solution") {
+        body["solution"] = solution
+    }
+    if let contents = presentWriteString(arguments, "contents") {
+        body["contents"] = contents
+    }
     guard !body.isEmpty else {
         return missingArgument("at least one of title / language / description / solution / contents")
     }

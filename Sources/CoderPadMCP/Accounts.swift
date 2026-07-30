@@ -136,8 +136,12 @@ public struct MCPAccountSet: Equatable, Sendable {
                 "screen_configured": account.screenEnabled,
                 "writes_enabled": allowsWrites(to: account),
             ]
-            if let userEmail = account.userEmail { entry["user_email"] = userEmail }
-            if account.screenEnabled { entry["screen_region"] = account.screenRegion }
+            if let userEmail = account.userEmail {
+                entry["user_email"] = userEmail
+            }
+            if account.screenEnabled {
+                entry["screen_region"] = account.screenRegion
+            }
             return entry
         }
     }
@@ -303,8 +307,12 @@ private func truthy(_ raw: String?) -> Bool {
 }
 
 private func expandedConfigURL(_ path: String, homeDirectory: URL) -> URL {
-    if path == "~" { return homeDirectory }
-    if path.hasPrefix("~/") { return homeDirectory.appending(path: String(path.dropFirst(2))) }
+    if path == "~" {
+        return homeDirectory
+    }
+    if path.hasPrefix("~/") {
+        return homeDirectory.appending(path: String(path.dropFirst(2)))
+    }
     return URL(fileURLWithPath: path)
 }
 
@@ -401,7 +409,9 @@ public func makeAccountSet(config: [String: Any]?, environment: [String: String]
                 screenAPIKey: optionalConfigCredential(entry, field: "screen_api_key", account: name),
                 screenRegion: configScreenRegion(entry, account: name),
             ))
-            if (entry["default"] as? Bool) == true { defaultNames.append(name) }
+            if (entry["default"] as? Bool) == true {
+                defaultNames.append(name)
+            }
         }
 
         guard defaultNames.count <= 1 else {

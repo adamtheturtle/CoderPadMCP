@@ -121,8 +121,12 @@ public func renderPrompt(name: String, arguments: [String: String]?) throws -> G
         let language = promptArgument(arguments, "language")
         let difficulty = promptArgument(arguments, "difficulty")
         var constraints = ""
-        if let language { constraints += "\nTarget language: \(language)." }
-        if let difficulty { constraints += "\nDifficulty: \(difficulty)." }
+        if let language {
+            constraints += "\nTarget language: \(language)."
+        }
+        if let difficulty {
+            constraints += "\nDifficulty: \(difficulty)."
+        }
         return GetPrompt.Result(
             description: "Draft a question about \(topic).",
             messages: [userPromptMessage("""

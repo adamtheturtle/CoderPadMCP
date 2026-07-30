@@ -241,7 +241,13 @@ struct ToolCatalogTests {
               case let .array(required)? = schema["required"]
         else { return [] }
 
-        return required.compactMap { if case let .string(value) = $0 { value } else { nil } }
+        return required.compactMap {
+            if case let .string(value) = $0 {
+                value
+            } else {
+                nil
+            }
+        }
     }
 
     private func property(_ name: String, of toolName: String) throws -> [String: Any] {

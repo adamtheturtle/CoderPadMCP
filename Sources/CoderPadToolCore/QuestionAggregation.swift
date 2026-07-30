@@ -77,10 +77,18 @@ public func canonicalInterviewType(_ raw: String) -> String {
 /// Echoes the active question filters back into a result, for clarity on what was counted.
 public func questionFiltersEcho(owner: String?, author: String?, language: String?, type: String?) -> [String: Any] {
     var filters: [String: Any] = [:]
-    if let owner = normalizedFilterValue(owner) { filters["owner"] = owner }
-    if let author = normalizedFilterValue(author) { filters["author"] = author }
-    if let language = normalizedFilterValue(language) { filters["language"] = language }
-    if let type = normalizedFilterValue(type) { filters["type"] = type }
+    if let owner = normalizedFilterValue(owner) {
+        filters["owner"] = owner
+    }
+    if let author = normalizedFilterValue(author) {
+        filters["author"] = author
+    }
+    if let language = normalizedFilterValue(language) {
+        filters["language"] = language
+    }
+    if let type = normalizedFilterValue(type) {
+        filters["type"] = type
+    }
     return filters
 }
 
@@ -109,7 +117,9 @@ public func compactQuestions(_ questions: [[String: Any]]) -> [[String: Any]] {
     questions.map { question in
         var row: [String: Any] = [:]
         for key in compactQuestionKeys {
-            if let value = compactScalar(question[key]) { row[key] = value }
+            if let value = compactScalar(question[key]) {
+                row[key] = value
+            }
         }
         return row
     }

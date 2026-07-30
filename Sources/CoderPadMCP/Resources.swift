@@ -168,7 +168,9 @@ public func parseResourceURI(_ uri: String) -> ResourceRequest? {
     // once — `components.path`/`.host` are already decoded, so decoding them again would
     // mangle values and break the round-trip with `resourcePathComponent` (#1030).
     var segments: [String] = []
-    if let host = components.percentEncodedHost, !host.isEmpty { segments.append(host) }
+    if let host = components.percentEncodedHost, !host.isEmpty {
+        segments.append(host)
+    }
     segments += components.percentEncodedPath.split(separator: "/").map(String.init)
     guard segments.count <= 5, segments.allSatisfy({ $0.utf8.count <= 1024 }) else { return nil }
 
@@ -207,10 +209,18 @@ private func isRoute(_ segment: String?, _ literal: String) -> Bool {
 }
 
 private func parseUnqualifiedResource(_ decoded: [String]) -> ResourceRequest? {
-    if isRoute(decoded.first, "quota"), decoded.count == 1 { return .quota }
-    if isRoute(decoded.first, "organization"), decoded.count == 1 { return .organization }
-    if isRoute(decoded.first, "pad") { return parsePadResource(Array(decoded.dropFirst())) }
-    if isRoute(decoded.first, "question") { return parseQuestionResource(Array(decoded.dropFirst())) }
+    if isRoute(decoded.first, "quota"), decoded.count == 1 {
+        return .quota
+    }
+    if isRoute(decoded.first, "organization"), decoded.count == 1 {
+        return .organization
+    }
+    if isRoute(decoded.first, "pad") {
+        return parsePadResource(Array(decoded.dropFirst()))
+    }
+    if isRoute(decoded.first, "question") {
+        return parseQuestionResource(Array(decoded.dropFirst()))
+    }
     return nil
 }
 
@@ -218,8 +228,12 @@ private func parseAccountResource(_ decoded: [String]) -> ResourceRequest? {
     guard decoded.count >= 3, isRoute(decoded[0], "account"), !decoded[1].isEmpty else { return nil }
 
     let account = decoded[1]
-    if isRoute(decoded[2], "quota"), decoded.count == 3 { return .accountQuota(account) }
-    if isRoute(decoded[2], "organization"), decoded.count == 3 { return .accountOrganization(account) }
+    if isRoute(decoded[2], "quota"), decoded.count == 3 {
+        return .accountQuota(account)
+    }
+    if isRoute(decoded[2], "organization"), decoded.count == 3 {
+        return .accountOrganization(account)
+    }
     if isRoute(decoded[2], "pad") {
         return parseAccountPadResource(account: account, tail: Array(decoded.dropFirst(3)))
     }
@@ -287,7 +301,9 @@ public func resolveResourceAccount(_ request: ResourceRequest, accountSet: MCPAc
 private func resourcePathComponent(_ value: String) -> String {
     var allowed = CharacterSet.urlPathAllowed
     allowed.remove(charactersIn: "/")
-    if let encoded = value.addingPercentEncoding(withAllowedCharacters: allowed) { return encoded }
+    if let encoded = value.addingPercentEncoding(withAllowedCharacters: allowed) {
+        return encoded
+    }
 
     // Guaranteed byte-level fallback: returning the raw value here could emit a
     // slash or control character into a URI and change resource routing (#1584).

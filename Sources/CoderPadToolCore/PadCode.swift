@@ -38,7 +38,11 @@ public let defaultMaxFileChars = 200_000
 /// nil/non-positive limit falls back to `defaultMaxFileChars` rather than "unlimited"
 /// (#1589). The marker itself adds at most ~64 bytes on top of the budget.
 public func truncate(_ body: String, to maxChars: Int?) -> String {
-    let limit = if let maxChars, maxChars > 0 { maxChars } else { defaultMaxFileChars }
+    let limit = if let maxChars, maxChars > 0 {
+        maxChars
+    } else {
+        defaultMaxFileChars
+    }
     let totalBytes = body.utf8.count
     guard totalBytes > limit else { return body }
 
@@ -81,7 +85,9 @@ public func synthesizedFilename(language: String?) -> String {
     guard let language, !language.isEmpty else { return "main.txt" }
 
     let key = language.lowercased()
-    if let known = languageExtensions[key] { return "main.\(known)" }
+    if let known = languageExtensions[key] {
+        return "main.\(known)"
+    }
 
     let safe = key.count <= 10 && key.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber) }
     return safe ? "main.\(key)" : "main.txt"
@@ -111,7 +117,9 @@ public func environmentIDs(in pad: [String: Any]) -> [Int] {
 
 private func environmentID(from value: Any) -> Int? {
     // JSON booleans bridge to NSNumber and would pass an `as? Int` cast as 0/1.
-    if value is Bool { return nil }
+    if value is Bool {
+        return nil
+    }
     let id: Int? = switch value {
     case let int as Int: int
     case let string as String: Int(string.trimmingCharacters(in: .whitespaces))
@@ -161,7 +169,9 @@ public func padCodeFiles(
             } else {
                 entry["contents"] = truncate(contents ?? "", to: maxFileChars)
             }
-            if let language { entry["language"] = language }
+            if let language {
+                entry["language"] = language
+            }
             // A present-but-non-string contents value is a schema problem the
             // caller must see, never a silently "empty" real file (#1594).
             if !isBinary, contents == nil, let rawContents, !(rawContents is NSNull) {
@@ -178,7 +188,9 @@ public func padCodeFiles(
             "filename": filename,
             "contents": truncate(contents, to: maxFileChars),
         ]
-        if let language { entry["language"] = language }
+        if let language {
+            entry["language"] = language
+        }
         files.append(entry)
     }
 
@@ -230,7 +242,9 @@ private func uniqueFilename(_ filename: String, seen: inout Set<String>) -> Stri
         let candidate = directory.isEmpty || directory == "."
             ? component
             : "\(directory)/\(component)"
-        if seen.insert(candidate).inserted { return candidate }
+        if seen.insert(candidate).inserted {
+            return candidate
+        }
         suffix += 1
     }
 }

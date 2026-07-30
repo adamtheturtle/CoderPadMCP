@@ -28,12 +28,16 @@ public func mcpToolDescriptor(
     annotations: [String: Any] = [:],
 ) -> [String: Any] {
     var schema: [String: Any] = ["type": "object", "properties": properties]
-    if !required.isEmpty { schema["required"] = required }
+    if !required.isEmpty {
+        schema["required"] = required
+    }
     for (key, value) in schemaExtras {
         schema[key] = value
     }
     var descriptor: [String: Any] = ["name": name, "description": description, "inputSchema": schema]
-    if !annotations.isEmpty { descriptor["annotations"] = annotations }
+    if !annotations.isEmpty {
+        descriptor["annotations"] = annotations
+    }
     return descriptor
 }
 
@@ -43,7 +47,9 @@ public func mcpStringSchema(_ description: String) -> [String: Any] {
 
 public func mcpIntSchema(_ description: String, minimum: Int? = nil) -> [String: Any] {
     var schema: [String: Any] = ["type": "integer", "description": description]
-    if let minimum { schema["minimum"] = minimum }
+    if let minimum {
+        schema["minimum"] = minimum
+    }
     return schema
 }
 
@@ -328,7 +334,11 @@ public let coderPadScreenToolNames: Set<String> = [
 /// can't use.
 public func coderPadToolDescriptors(screenEnabled: Bool, writesEnabled: Bool) -> [[String: Any]] {
     var result = coderPadReadToolDescriptors
-    if screenEnabled { result += coderPadScreenToolDescriptors }
-    if writesEnabled { result += coderPadWriteToolDescriptors }
+    if screenEnabled {
+        result += coderPadScreenToolDescriptors
+    }
+    if writesEnabled {
+        result += coderPadWriteToolDescriptors
+    }
     return result
 }

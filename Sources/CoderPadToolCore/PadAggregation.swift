@@ -15,7 +15,9 @@ import Foundation
 /// numeric form, so a proxy that re-encodes the token as a Double or pads it with
 /// whitespace can't silently truncate pagination (#1599). Booleans are not tokens.
 public func nextPageToken(_ value: Any?) -> String? {
-    if value is Bool { return nil }
+    if value is Bool {
+        return nil
+    }
     switch value {
     case let token as String:
         let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -85,7 +87,9 @@ public struct RecordIdentityTracker: Sendable {
             let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
             return trimmed.isEmpty ? nil : trimmed
         }
-        if let value = raw as? Int, value > 0 { return String(value) }
+        if let value = raw as? Int, value > 0 {
+            return String(value)
+        }
         return nil
     }
 }
@@ -273,8 +277,12 @@ public func withinDateRange(_ record: [String: Any], after: String?, before: Str
 /// forms intentionally match `withinDateRange`: month (`YYYY-MM`), date
 /// (`YYYY-MM-DD`), or an ISO-8601 timestamp.
 public func dateBoundValidationError(after: String?, before: String?) -> String? {
-    if let error = dateBoundValidationError(name: "created_after", value: after) { return error }
-    if let error = dateBoundValidationError(name: "created_before", value: before) { return error }
+    if let error = dateBoundValidationError(name: "created_after", value: after) {
+        return error
+    }
+    if let error = dateBoundValidationError(name: "created_before", value: before) {
+        return error
+    }
     // An inverted range silently yields zero records, which reads as a legitimate
     // empty result (#1604). Month/date bounds compare as whole inclusive periods
     // (a before of 2025-01 spans all of January), matching `withinDateRange`.
@@ -337,14 +345,22 @@ private enum DateBound {
 
 private func dateBound(from value: String) -> DateBound? {
     let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-    if isValidMonthBound(trimmed) { return .month(trimmed) }
-    if isValidDateBound(trimmed) { return .day(trimmed) }
-    if let date = iso8601Date(from: trimmed) { return .timestamp(date) }
+    if isValidMonthBound(trimmed) {
+        return .month(trimmed)
+    }
+    if isValidDateBound(trimmed) {
+        return .day(trimmed)
+    }
+    if let date = iso8601Date(from: trimmed) {
+        return .timestamp(date)
+    }
     return nil
 }
 
 private func iso8601Date(from value: String) -> Date? {
-    if let date = DateParsers.iso8601.date(from: value) { return date }
+    if let date = DateParsers.iso8601.date(from: value) {
+        return date
+    }
 
     return DateParsers.iso8601Fractional.date(from: value)
 }
@@ -386,16 +402,26 @@ private func isValidDateBound(_ value: String) -> Bool {
 
 /// Adds active `created_after`/`created_before` bounds to a filters echo.
 public func addDateFilters(_ filters: inout [String: Any], after: String?, before: String?) {
-    if let after, !after.isEmpty { filters["created_after"] = after }
-    if let before, !before.isEmpty { filters["created_before"] = before }
+    if let after, !after.isEmpty {
+        filters["created_after"] = after
+    }
+    if let before, !before.isEmpty {
+        filters["created_before"] = before
+    }
 }
 
 /// Echoes the active filters back into a result, for clarity on what was counted.
 public func filtersEcho(owner: String?, state: String?, language: String?) -> [String: Any] {
     var filters: [String: Any] = [:]
-    if let owner = normalizedFilterValue(owner) { filters["owner"] = owner }
-    if let state = normalizedFilterValue(state) { filters["state"] = state }
-    if let language = normalizedFilterValue(language) { filters["language"] = language }
+    if let owner = normalizedFilterValue(owner) {
+        filters["owner"] = owner
+    }
+    if let state = normalizedFilterValue(state) {
+        filters["state"] = state
+    }
+    if let language = normalizedFilterValue(language) {
+        filters["language"] = language
+    }
     return filters
 }
 
@@ -467,8 +493,12 @@ public func accumulateCounts(_ counts: inout [String: Int], pads: [[String: Any]
             }
         }
         key = boundedAggregateKey(key)
-        if !isMissing, key == aggregateMissingGroup { key += " [literal value]" }
-        if key == aggregateOverflowGroup { key += " [literal value]" }
+        if !isMissing, key == aggregateMissingGroup {
+            key += " [literal value]"
+        }
+        if key == aggregateOverflowGroup {
+            key += " [literal value]"
+        }
         if counts[key] == nil,
            counts[aggregateOverflowGroup] != nil || counts.count >= maxAggregateGroups - 1
         {
@@ -518,7 +548,9 @@ public func compactPads(_ pads: [[String: Any]]) -> [[String: Any]] {
     pads.map { pad in
         var row: [String: Any] = [:]
         for key in compactPadKeys {
-            if let value = compactScalar(pad[key]) { row[key] = value }
+            if let value = compactScalar(pad[key]) {
+                row[key] = value
+            }
         }
         return row
     }

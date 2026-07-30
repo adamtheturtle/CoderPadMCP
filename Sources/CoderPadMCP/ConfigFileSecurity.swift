@@ -3,8 +3,13 @@
 //  CoderPadMCP
 //
 
-import Darwin
 import Foundation
+
+#if canImport(Darwin)
+    import Darwin
+#elseif canImport(Glibc)
+    import Glibc
+#endif
 
 func securelyReadConfig(
     path: String,
@@ -14,10 +19,18 @@ func securelyReadConfig(
 ) throws -> Data? {
     let descriptor = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW)
     guard descriptor >= 0 else {
-        if errno == ENOENT, !explicit { return nil }
-        if errno == ENOENT { throw MCPConfigLoadError.missingConfig(path: path) }
-        if errno == ELOOP { throw MCPConfigLoadError.symbolicLink(path: path) }
-        if errno == EACCES { throw MCPConfigLoadError.permissionDenied(path: path) }
+        if errno == ENOENT, !explicit {
+            return nil
+        }
+        if errno == ENOENT {
+            throw MCPConfigLoadError.missingConfig(path: path)
+        }
+        if errno == ELOOP {
+            throw MCPConfigLoadError.symbolicLink(path: path)
+        }
+        if errno == EACCES {
+            throw MCPConfigLoadError.permissionDenied(path: path)
+        }
         throw MCPConfigLoadError.readFailed(path: path)
     }
 
@@ -52,9 +65,13 @@ func securelyReadConfig(
         let count = buffer.withUnsafeMutableBytes { bytes in
             read(descriptor, bytes.baseAddress, bytes.count)
         }
-        if count == 0 { break }
+        if count == 0 {
+            break
+        }
         if count < 0 {
-            if errno == EINTR { continue }
+            if errno == EINTR {
+                continue
+            }
             throw MCPConfigLoadError.readFailed(path: path)
         }
         guard data.count <= limit - count else {
@@ -67,14 +84,25 @@ func securelyReadConfig(
 }
 
 private func hasExtendedACL(descriptor: Int32, path: String) throws -> Bool {
-    errno = 0
-    guard let acl = acl_get_fd_np(descriptor, ACL_TYPE_EXTENDED) else {
-        if errno == ENOENT { return false }
-        throw MCPConfigLoadError.readFailed(path: path)
-    }
+    #if canImport(Darwin)
+        errno = 0
+        guard let acl = acl_get_fd_np(descriptor, ACL_TYPE_EXTENDED) else {
+            if errno == ENOENT {
+                return false
+            }
+            throw MCPConfigLoadError.readFailed(path: path)
+        }
 
-    acl_free(UnsafeMutableRawPointer(acl))
-    return true
+        acl_free(UnsafeMutableRawPointer(acl))
+        return true
+    #else
+        // Linux's POSIX ACL API is supplied by libacl rather than the C runtime.
+        // Unix permission bits are still validated above; avoid adding a system
+        // library dependency solely for this optional hardening check.
+        _ = descriptor
+        _ = path
+        return false
+    #endif
 }
 
 func classifiedConfigReadError(path: String, error: any Error) -> MCPConfigLoadError {
