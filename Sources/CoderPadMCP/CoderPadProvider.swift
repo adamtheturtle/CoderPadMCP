@@ -26,6 +26,8 @@
 //  opted in (#502). There is no delete tool: deletion stays a human action in the app.
 //
 
+// swiftlint:disable file_length
+
 import Foundation
 import MCP
 
@@ -52,21 +54,28 @@ private func cappedData(
     limit: Int,
     session: URLSession = .shared,
 ) async throws -> (Data, URLResponse) {
-    let (bytes, response) = try await session.bytes(for: request)
-    if response.expectedContentLength > Int64(limit) {
-        throw ResponseTooLargeError(limit: limit)
-    }
+    #if os(Linux)
+        let (data, response) = try await session.data(for: request)
+        guard data.count <= limit else { throw ResponseTooLargeError(limit: limit) }
 
-    var data = Data()
-    if response.expectedContentLength > 0 {
-        data.reserveCapacity(min(Int(response.expectedContentLength), limit))
-    }
-    for try await byte in bytes {
-        guard data.count < limit else { throw ResponseTooLargeError(limit: limit) }
+        return (data, response)
+    #else
+        let (bytes, response) = try await session.bytes(for: request)
+        if response.expectedContentLength > Int64(limit) {
+            throw ResponseTooLargeError(limit: limit)
+        }
 
-        data.append(byte)
-    }
-    return (data, response)
+        var data = Data()
+        if response.expectedContentLength > 0 {
+            data.reserveCapacity(min(Int(response.expectedContentLength), limit))
+        }
+        for try await byte in bytes {
+            guard data.count < limit else { throw ResponseTooLargeError(limit: limit) }
+
+            data.append(byte)
+        }
+        return (data, response)
+    #endif
 }
 
 /// Performs an authenticated GET against an account and returns the status and raw body.
