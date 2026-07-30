@@ -61,6 +61,10 @@ reads. The host chooses the MCP transport and controls where credentials come fr
 
 ## Standalone server
 
+Download a signed macOS or Linux executable from
+[GitHub Releases](https://github.com/adamtheturtle/CoderPadMCP/releases), or build
+the server from source:
+
 ```sh
 swift build -c release
 CODERPAD_API_KEY=your-key swift run coderpad-mcp
