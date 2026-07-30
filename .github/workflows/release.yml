@@ -1,0 +1,223 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to publish
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+
+jobs:
+  validate:
+    name: Validate release
+    runs-on: ubuntu-latest
+    container: swift:6.2
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+      - name: Validate tag and source version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#v}"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Release tag must be a semantic version such as 1.2.3 or v1.2.3."
+            exit 1
+          fi
+          if ! grep -Fq "public let coderPadMCPVersion = \"$version\"" \
+            Sources/CoderPadMCP/ReleaseVersion.swift; then
+            echo "::error::coderPadMCPVersion does not match tag $RELEASE_TAG."
+            exit 1
+          fi
+      - name: Test
+        run: swift test
+
+  macos:
+    name: macOS universal
+    needs: validate
+    runs-on: macos-26
+    env:
+      APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      MACOS_CERTIFICATE_BASE64: ${{ secrets.MACOS_CERTIFICATE_BASE64 }}
+      MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+      MACOS_SIGNING_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+      MACOSX_DEPLOYMENT_TARGET: "15.0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_26.5.app
+      - name: Check signing configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          for name in \
+            APPLE_APP_SPECIFIC_PASSWORD \
+            APPLE_ID \
+            APPLE_TEAM_ID \
+            MACOS_CERTIFICATE_BASE64 \
+            MACOS_CERTIFICATE_PASSWORD \
+            MACOS_SIGNING_IDENTITY
+          do
+            if [[ -z "${!name:-}" ]]; then
+              missing+=("$name")
+            fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            echo "::error::Missing release secrets: ${missing[*]}"
+            exit 1
+          fi
+      - name: Build universal executable
+        shell: bash
+        run: |
+          set -euo pipefail
+          swift build -c release --arch arm64 --scratch-path .build-arm64
+          swift build -c release --arch x86_64 --scratch-path .build-x86_64
+          arm_bin="$(swift build -c release --arch arm64 \
+            --scratch-path .build-arm64 --show-bin-path)/coderpad-mcp"
+          x86_bin="$(swift build -c release --arch x86_64 \
+            --scratch-path .build-x86_64 --show-bin-path)/coderpad-mcp"
+          mkdir -p dist
+          lipo -create "$arm_bin" "$x86_bin" -output dist/coderpad-mcp
+          lipo -archs dist/coderpad-mcp
+      - name: Sign, notarize, and package
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#v}"
+          package_name="coderpad-mcp-${version}-macos-universal"
+          package_dir="$RUNNER_TEMP/$package_name"
+          archive_path="$GITHUB_WORKSPACE/dist/$package_name.zip"
+          certificate_path="$RUNNER_TEMP/developer-id.p12"
+          keychain_path="$RUNNER_TEMP/release-signing.keychain-db"
+          keychain_password="$(openssl rand -hex 24)"
+
+          cleanup() {
+            security delete-keychain "$keychain_path" >/dev/null 2>&1 || true
+            rm -f "$certificate_path"
+          }
+          trap cleanup EXIT
+
+          printf '%s' "$MACOS_CERTIFICATE_BASE64" | base64 -D > "$certificate_path"
+          security create-keychain -p "$keychain_password" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$keychain_password" "$keychain_path"
+          security import "$certificate_path" \
+            -P "$MACOS_CERTIFICATE_PASSWORD" \
+            -A \
+            -t cert \
+            -f pkcs12 \
+            -k "$keychain_path"
+          security set-key-partition-list \
+            -S apple-tool:,apple: \
+            -s \
+            -k "$keychain_password" \
+            "$keychain_path"
+
+          codesign \
+            --force \
+            --options runtime \
+            --timestamp \
+            --sign "$MACOS_SIGNING_IDENTITY" \
+            --keychain "$keychain_path" \
+            dist/coderpad-mcp
+          codesign --verify --strict --verbose=2 dist/coderpad-mcp
+
+          mkdir -p "$package_dir"
+          cp dist/coderpad-mcp LICENSE README.md "$package_dir/"
+          ditto -c -k --sequesterRsrc --keepParent "$package_dir" "$archive_path"
+          xcrun notarytool submit "$archive_path" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+          (
+            cd dist
+            shasum -a 256 "$package_name.zip" > "$package_name.zip.sha256"
+          )
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: macos-release
+          path: |
+            dist/*.zip
+            dist/*.sha256
+          if-no-files-found: error
+
+  linux:
+    name: Linux x86_64
+    needs: validate
+    runs-on: ubuntu-latest
+    container: swift:6.2
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+      - name: Build and package
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#v}"
+          package_name="coderpad-mcp-${version}-linux-x86_64"
+          package_dir="$RUNNER_TEMP/$package_name"
+          mkdir -p "$package_dir" dist
+          swift build -c release --static-swift-stdlib
+          binary="$(swift build -c release --static-swift-stdlib --show-bin-path)/coderpad-mcp"
+          cp "$binary" LICENSE README.md "$package_dir/"
+          tar -C "$RUNNER_TEMP" -czf "dist/$package_name.tar.gz" "$package_name"
+          (
+            cd dist
+            sha256sum "$package_name.tar.gz" > "$package_name.tar.gz.sha256"
+          )
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: linux-release
+          path: |
+            dist/*.tar.gz
+            dist/*.sha256
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub Release
+    needs: [macos, linux]
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" dist/* \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+          else
+            gh release create "$RELEASE_TAG" dist/* \
+              --repo "$GITHUB_REPOSITORY" \
+              --verify-tag \
+              --generate-notes \
+              --title "CoderPadMCP $RELEASE_TAG"
+          fi
