@@ -45,10 +45,17 @@ public func mcpStringSchema(_ description: String) -> [String: Any] {
     ["type": "string", "description": description]
 }
 
-public func mcpIntSchema(_ description: String, minimum: Int? = nil) -> [String: Any] {
+public func mcpIntSchema(
+    _ description: String,
+    minimum: Int? = nil,
+    maximum: Int? = nil,
+) -> [String: Any] {
     var schema: [String: Any] = ["type": "integer", "description": description]
     if let minimum {
         schema["minimum"] = minimum
+    }
+    if let maximum {
+        schema["maximum"] = maximum
     }
     return schema
 }
@@ -236,7 +243,11 @@ public nonisolated(unsafe) let coderPadScreenToolDescriptors: [[String: Any]] =
                 "campaignId": mcpIntSchema("Optional. Only sessions in this campaign."),
                 "candidateEmail": mcpStringSchema("Optional. Only sessions for this candidate email."),
                 "start": mcpIntSchema("Optional. Offset of the first session to return.", minimum: 0),
-                "limit": mcpIntSchema("Optional. Maximum number of sessions to return.", minimum: 1),
+                "limit": mcpIntSchema(
+                    "Optional. Maximum number of sessions to return (up to 50).",
+                    minimum: 1,
+                    maximum: maxPaginationLimit,
+                ),
             ]),
         ),
         mcpToolDescriptor(
