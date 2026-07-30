@@ -15,11 +15,11 @@ public struct CoderPadMCPCache: Sendable {
     public typealias Load = @Sendable (
         _ kind: CoderPadMCPRecordKind,
         _ accountID: String,
-        _ requireFresh: Bool
+        _ requireFresh: Bool,
     ) -> Data?
     public typealias Invalidate = @Sendable (
         _ kind: CoderPadMCPRecordKind,
-        _ accountID: String
+        _ accountID: String,
     ) async -> Void
 
     public let load: Load
