@@ -1,0 +1,52 @@
+# SwiftLint configuration for CoderPadMCP.
+# Lints the hand-written sources and tests; the SwiftPM build directory holds
+# generated code (e.g. the test entry point) that we never want to lint.
+
+included:
+  - Sources
+  - Tests
+
+excluded:
+  - .build
+
+disabled_rules:
+  # `String(decoding:as:)` is deliberate. Every Data -> String conversion here is on
+  # bytes we just produced ourselves via JSONSerialization, so UTF-8 validity is
+  # guaranteed; the failable `String(bytes:encoding:)` would add a dead error path
+  # that could only be handled by inventing a failure case that cannot occur.
+  - optional_data_string_conversion
+  # SwiftFormat owns collection and brace formatting.
+  - opening_brace
+  - trailing_comma
+
+cyclomatic_complexity:
+  warning: 25
+  error: 25
+
+file_length:
+  warning: 1400
+  error: 1400
+
+function_body_length:
+  warning: 100
+  error: 100
+
+function_parameter_count:
+  warning: 6
+  error: 6
+
+line_length:
+  warning: 150
+  error: 150
+
+type_body_length:
+  warning: 700
+  error: 700
+
+identifier_name:
+  # Short names are idiomatic where the scope is tiny and the meaning is local —
+  # `n` as a loop counter and as a test fixture's index field. The default minimum
+  # of three characters would force `index`/`number` padding that reads worse.
+  min_length:
+    warning: 1
+    error: 1
