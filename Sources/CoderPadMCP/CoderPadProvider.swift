@@ -37,6 +37,7 @@ import MCP
 private let screenAPIPrefix = "/assessment/api/v1.1"
 private let interviewReadResponseLimit = 8 * 1024 * 1024
 private let interviewWriteResponseLimit = 1 * 1024 * 1024
+private let screenReadResponseLimit = 8 * 1024 * 1024
 
 // MARK: - CoderPad REST
 
@@ -117,7 +118,10 @@ private func screenGet(_ path: String, account: MCPAccount, query: [URLQueryItem
     request.setValue(key, forHTTPHeaderField: "API-Key")
     request.setValue("application/json", forHTTPHeaderField: "Accept")
     do {
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await boundedResponseData(
+            for: request,
+            limit: screenReadResponseLimit,
+        )
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         return APIResponse(status: status, data: data)
     } catch {

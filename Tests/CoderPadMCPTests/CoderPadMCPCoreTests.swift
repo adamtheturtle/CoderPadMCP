@@ -12,6 +12,21 @@ import Foundation
 import MCP
 import Testing
 
+@Suite("Bounded HTTP responses")
+struct BoundedHTTPResponseTests {
+    @Test
+    func `buffer rejects a chunk before crossing its byte limit`() throws {
+        var buffer = BoundedDataBuffer(limit: 5)
+
+        try buffer.append(Data([1, 2, 3]))
+        #expect(buffer.data == Data([1, 2, 3]))
+        #expect(throws: BoundedHTTPResponseError(limit: 5)) {
+            try buffer.append(Data([4, 5, 6]))
+        }
+        #expect(buffer.data == Data([1, 2, 3]))
+    }
+}
+
 // MARK: - Argument coercion
 
 @Suite("Argument coercion")
