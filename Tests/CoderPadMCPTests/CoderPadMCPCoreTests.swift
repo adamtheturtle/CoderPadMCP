@@ -270,7 +270,11 @@ struct ToolCatalogTests {
 @Suite("Paging")
 struct PagingTests {
     @Test
-    func `nextPageToken reads strings and ints, nil when absent or empty`() {
+    func `nextPageToken reads continuation URLs strings and ints, nil when absent or empty`() {
+        #expect(nextPageToken(
+            "https://app.coderpad.io/api/pads?sort=updated_at,desc&page=2",
+        ) == "2")
+        #expect(nextPageToken("/api/questions/?page=3") == "3")
         #expect(nextPageToken("abc") == "abc")
         #expect(nextPageToken(2) == "2")
         #expect(nextPageToken("") == nil)
