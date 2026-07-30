@@ -283,12 +283,20 @@ public struct CoderPadMCPActivity: Sendable {
     public let accountID: String?
     public let accountName: String?
     public let succeeded: Bool
+    public let failureReason: String?
 
-    public init(tool: String, accountID: String?, accountName: String?, succeeded: Bool) {
+    public init(
+        tool: String,
+        accountID: String?,
+        accountName: String?,
+        succeeded: Bool,
+        failureReason: String?,
+    ) {
         self.tool = tool
         self.accountID = accountID
         self.accountName = accountName
         self.succeeded = succeeded
+        self.failureReason = failureReason
     }
 }
 
@@ -325,15 +333,21 @@ public struct CoderPadProvider: MCPToolProvider {
         // Resolve the target account up front so every tool gives the same clear error.
         let requestedAccount = stringArgument(arguments, "account")
         guard let account = accountSet.resolve(requestedAccount) else {
-            return unknownAccount(requestedAccount, accountSet: accountSet)
+            let result = unknownAccount(requestedAccount, accountSet: accountSet)
+            record(name: name, account: nil, result: result)
+            return result
         }
 
         // Write tools are gated on the opt-in, regardless of which account is targeted.
         if writeToolNames.contains(name), !accountSet.allowsWrites(to: account) {
-            return writesDisabled()
+            let result = writesDisabled()
+            record(name: name, account: account, result: result)
+            return result
         }
         if writeToolNames.contains(name), strictDryRunArgument(arguments) == .invalid {
-            return errorResult("dry_run must be a boolean (true or false).")
+            let result = errorResult("dry_run must be a boolean (true or false).")
+            record(name: name, account: account, result: result)
+            return result
         }
 
         let result = await dispatch(
@@ -348,11 +362,19 @@ public struct CoderPadProvider: MCPToolProvider {
     }
 
     private func record(name: String, account: MCPAccount?, result: CallTool.Result) {
+        let failureReason: String? = if result.isError == true,
+                                        case let .text(text, _, _)? = result.content.first
+        {
+            text
+        } else {
+            nil
+        }
         activity?(CoderPadMCPActivity(
             tool: name,
             accountID: account?.id,
             accountName: account?.name,
             succeeded: result.isError != true,
+            failureReason: failureReason,
         ))
     }
 

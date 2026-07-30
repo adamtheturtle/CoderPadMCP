@@ -57,6 +57,38 @@ struct EmbeddingTests {
     }
 
     @Test
+    func `stable ids resolve duplicate display names and select the default`() throws {
+        let first = try MCPAccount(
+            id: "first",
+            name: "Acme",
+            apiKey: "one",
+            baseURL: #require(URL(string: "https://app.coderpad.io")),
+            screenAPIKey: nil,
+            screenRegion: "us",
+        )
+        let second = try MCPAccount(
+            id: "second",
+            name: "Acme",
+            apiKey: "two",
+            baseURL: #require(URL(string: "https://app.coderpad.io")),
+            screenAPIKey: nil,
+            screenRegion: "us",
+        )
+        let set = MCPAccountSet(
+            accounts: [first, second],
+            defaultName: second.id,
+            allowWrites: false,
+        )
+
+        #expect(set.defaultAccount?.id == second.id)
+        #expect(set.resolve(first.id)?.id == first.id)
+        #expect(set.resolve("Acme") == nil)
+        let defaults = set.directory().filter { $0["is_default"] as? Bool == true }
+        #expect(defaults.count == 1)
+        #expect(defaults.first?["id"] as? String == second.id)
+    }
+
+    @Test
     func `cache hooks preserve opaque encoded records`() async {
         let expected = Data(#"[{"id":"pad-1"}]"#.utf8)
         let cache = CoderPadMCPCache(

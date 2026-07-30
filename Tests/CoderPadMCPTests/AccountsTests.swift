@@ -217,11 +217,15 @@ struct AccountsTests {
     /// resolves to nil instead of whichever was listed first (#1582).
     @Test
     func `resolve returns nil for ambiguous case-insensitive matches`() {
-        let make: (String) -> MCPAccount = { name in
-            MCPAccount(name: name, apiKey: "k", baseURL: URL(string: "https://app.coderpad.io")!,
+        let make: (String, String) -> MCPAccount = { id, name in
+            MCPAccount(id: id, name: name, apiKey: "k", baseURL: URL(string: "https://app.coderpad.io")!,
                        screenAPIKey: nil, screenRegion: "us")
         }
-        let set = MCPAccountSet(accounts: [make("Acme"), make("ACME")], defaultName: "Acme", allowWrites: false)
+        let set = MCPAccountSet(
+            accounts: [make("first", "Acme"), make("second", "ACME")],
+            defaultName: "first",
+            allowWrites: false,
+        )
         #expect(set.resolve("acme") == nil)
         #expect(set.resolve("Acme") == nil)
     }

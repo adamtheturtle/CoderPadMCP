@@ -81,7 +81,9 @@ public struct MCPAccountSet: Equatable, Sendable {
     /// The default account (the one named `defaultName`, else the first), or nil
     /// for a directly constructed empty set (#1563).
     public var defaultAccount: MCPAccount? {
-        accounts.first { $0.name == defaultName } ?? accounts.first
+        accounts.first { $0.id == defaultName }
+            ?? accounts.first { $0.name == defaultName }
+            ?? accounts.first
     }
 
     /// Resolves a tool call's `account` argument to a configured account by name
@@ -96,6 +98,9 @@ public struct MCPAccountSet: Equatable, Sendable {
         }
 
         let wanted = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let identified = accounts.first(where: { $0.id == wanted }) {
+            return identified
+        }
         let matches = accounts.filter { $0.name.caseInsensitiveCompare(wanted) == .orderedSame }
         guard matches.count == 1 else { return nil }
 
@@ -127,7 +132,7 @@ public struct MCPAccountSet: Equatable, Sendable {
                 "id": account.id,
                 "name": account.name,
                 "base_url": account.baseURL.absoluteString,
-                "is_default": account.name == defaultName,
+                "is_default": account.id == defaultAccount?.id,
                 "screen_configured": account.screenEnabled,
                 "writes_enabled": allowsWrites(to: account),
             ]
