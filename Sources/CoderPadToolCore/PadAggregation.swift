@@ -10,10 +10,13 @@
 
 import Foundation
 
-/// Interprets a `next_page` value (a string token, or a number in some responses); nil
-/// means there are no more pages. Strings are trimmed and numbers accepted in any JSON
-/// numeric form, so a proxy that re-encodes the token as a Double or pads it with
-/// whitespace can't silently truncate pagination (#1599). Booleans are not tokens.
+/// Interprets a `next_page` value (an absolute/relative continuation URL, a string page
+/// token, or a number in some responses); nil means there are no more pages. CoderPad's
+/// published response shape uses an absolute URL, but the provider rebuilds requests
+/// against the configured account origin rather than following a server-supplied URL
+/// with credentials. Extracting only its `page` query value preserves that boundary.
+/// Plain tokens remain compatible with proxies that return only the page value, and
+/// numbers are accepted in any JSON numeric form (#1599). Booleans are not tokens.
 public func nextPageToken(_ value: Any?) -> String? {
     if value is Bool {
         return nil
@@ -21,7 +24,16 @@ public func nextPageToken(_ value: Any?) -> String? {
     switch value {
     case let token as String:
         let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? nil : trimmed
+        guard !trimmed.isEmpty else { return nil }
+
+        if let components = URLComponents(string: trimmed),
+           let page = components.queryItems?.first(where: { $0.name == "page" })?.value?
+           .trimmingCharacters(in: .whitespacesAndNewlines),
+           !page.isEmpty
+        {
+            return page
+        }
+        return trimmed
 
     case let number as Int:
         return String(number)
