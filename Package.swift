@@ -12,7 +12,7 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", from: "0.12.1"),
         .package(url: "https://github.com/adamtheturtle/MCPKit.git", from: "0.1.0"),
-        .package(url: "https://github.com/adamtheturtle/CoderPadKit.git", from: "0.5.8"),
+        .package(url: "https://github.com/adamtheturtle/CoderPadKit.git", from: "0.5.9"),
         .package(url: "https://github.com/apple/swift-docc-plugin", from: "1.4.3"),
     ],
     targets: [
