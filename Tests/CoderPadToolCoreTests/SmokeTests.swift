@@ -17,6 +17,19 @@ import Testing
     #expect(!repeated)
 }
 
+@Test func `pagination tokens enforce a byte limit`() {
+    let maximum = String(repeating: "a", count: maxPaginationTokenBytes)
+    let oversized = maximum + "a"
+    var tracker = PaginationTokenTracker()
+    let acceptedMaximum = tracker.accept(maximum)
+    let acceptedOversized = tracker.accept(oversized)
+
+    #expect(nextPageToken(maximum) == maximum)
+    #expect(nextPageToken(oversized) == nil)
+    #expect(acceptedMaximum)
+    #expect(!acceptedOversized)
+}
+
 @Test func `pad record tracker deduplicates ids and rejects missing identity`() {
     var tracker = RecordIdentityTracker()
     let first = tracker.acceptPad(["id": " pad-1 "])

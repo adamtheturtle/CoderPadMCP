@@ -330,6 +330,7 @@ struct PagingTests {
         #expect(nextPageToken(0) == nil)
         #expect(nextPageToken(-1) == nil)
         #expect(nextPageToken(NSNumber(value: 2.5)) == nil)
+        #expect(nextPageToken(String(repeating: "a", count: maxPaginationTokenBytes + 1)) == nil)
         #expect(nextPageToken("") == nil)
         #expect(nextPageToken(nil) == nil)
         #expect(nextPageToken(NSNull()) == nil)

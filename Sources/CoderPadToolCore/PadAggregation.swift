@@ -10,6 +10,8 @@
 
 import Foundation
 
+public let maxPaginationTokenBytes = 256
+
 /// Interprets a `next_page` value (an absolute/relative continuation URL, a string page
 /// token, or a number in some responses); nil means there are no more pages. CoderPad's
 /// published response shape uses an absolute URL, but the provider rebuilds requests
@@ -32,9 +34,9 @@ public func nextPageToken(_ value: Any?) -> String? {
            .trimmingCharacters(in: .whitespacesAndNewlines),
            !page.isEmpty
         {
-            return page
+            return boundedPaginationToken(page)
         }
-        return trimmed
+        return boundedPaginationToken(trimmed)
 
     case let number as Int:
         return number > 0 ? String(number) : nil
@@ -59,8 +61,13 @@ public struct PaginationTokenTracker: Sendable {
     public init() {}
 
     public mutating func accept(_ token: String) -> Bool {
-        seen.insert(token).inserted
+        guard boundedPaginationToken(token) != nil else { return false }
+        return seen.insert(token).inserted
     }
+}
+
+private func boundedPaginationToken(_ token: String) -> String? {
+    token.utf8.count <= maxPaginationTokenBytes ? token : nil
 }
 
 public enum RecordIdentityDisposition: Equatable, Sendable {
