@@ -754,6 +754,21 @@ struct PadCodeTests {
     }
 
     @Test
+    func `padCodePayload reports malformed legacy contents`() throws {
+        let payload = padCodePayload(
+            id: "abc",
+            pad: ["contents": ["not": "a string"]],
+            environments: [],
+            maxFileChars: nil,
+        )
+        let errors = try #require(payload["schema_errors"] as? [String])
+
+        #expect(payload["incomplete"] as? Bool == true)
+        #expect((payload["files"] as? [[String: Any]])?.isEmpty == true)
+        #expect(errors == ["The legacy pad contents were not a string in the API response."])
+    }
+
+    @Test
     func `jsonObject parses objects and rejects non-objects`() {
         #expect(jsonObject(#"{"a":1}"#)?["a"] as? Int == 1)
         #expect(jsonObject("[1,2,3]") == nil)

@@ -223,22 +223,26 @@ private func assemblePadCodeFiles(
         }
     }
 
-    if files.isEmpty, omittedFileCount == 0,
-       environmentIDs(in: pad).isEmpty, let contents = pad["contents"] as? String
+    if files.isEmpty, omittedFileCount == 0, environmentIDs(in: pad).isEmpty,
+       let rawContents = pad["contents"], !(rawContents is NSNull)
     {
-        let language = sanitizedLanguage(pad["language"] as? String)
-        let filename = uniqueFilename(synthesizedFilename(language: language), seen: &seenFilenames)
-        var entry: [String: Any] = [
-            "filename": filename,
-            "contents": truncate(contents, to: min(
-                maxFileChars.flatMap { $0 > 0 ? $0 : nil } ?? defaultMaxFileChars,
-                max(1, remainingContentBytes - 64),
-            )),
-        ]
-        if let language {
-            entry["language"] = language
+        if let contents = rawContents as? String {
+            let language = sanitizedLanguage(pad["language"] as? String)
+            let filename = uniqueFilename(synthesizedFilename(language: language), seen: &seenFilenames)
+            var entry: [String: Any] = [
+                "filename": filename,
+                "contents": truncate(contents, to: min(
+                    maxFileChars.flatMap { $0 > 0 ? $0 : nil } ?? defaultMaxFileChars,
+                    max(1, remainingContentBytes - 64),
+                )),
+            ]
+            if let language {
+                entry["language"] = language
+            }
+            files.append(entry)
+        } else {
+            schemaErrors.append("The legacy pad contents were not a string in the API response.")
         }
-        files.append(entry)
     }
 
     return PadCodeFileAssembly(
