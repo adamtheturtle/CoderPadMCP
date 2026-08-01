@@ -14,6 +14,9 @@ import Foundation
 import MCP
 import MCPKit
 
+public let maxComparedPads = 10
+public let maxComparePadIDsBytes = 1024
+
 /// The prompt catalog advertised by `prompts/list`.
 public let interviewPrompts: [Prompt] = [
     Prompt(
@@ -100,9 +103,7 @@ public func renderPrompt(name: String, arguments: [String: String]?) throws -> G
 
     case "compare_pads":
         let ids = try requiredPromptArgument(arguments, "pad_ids")
-        let list = ids.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-        guard !list.isEmpty else { throw PromptError.missingArgument("pad_ids") }
+        let list = try comparedPadIDs(ids)
 
         let quoted = list.map { "\"\($0)\"" }.joined(separator: ", ")
         return GetPrompt.Result(
@@ -143,6 +144,22 @@ public func renderPrompt(name: String, arguments: [String: String]?) throws -> G
     default:
         throw PromptError.unknownPrompt(name)
     }
+}
+
+private func comparedPadIDs(_ raw: String) throws -> [String] {
+    guard raw.utf8.count <= maxComparePadIDsBytes else {
+        throw PromptError.invalidArgument(name: "pad_ids", reason: "must be at most \(maxComparePadIDsBytes) bytes")
+    }
+    let values = raw.split(separator: ",", omittingEmptySubsequences: false)
+        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+    guard values.contains(where: { !$0.isEmpty }) else { throw PromptError.missingArgument("pad_ids") }
+    guard values.count <= maxComparedPads else {
+        throw PromptError.invalidArgument(name: "pad_ids", reason: "must contain at most \(maxComparedPads) pads")
+    }
+    guard values.allSatisfy({ validatedPadID($0) != nil }) else {
+        throw PromptError.invalidArgument(name: "pad_ids", reason: "must contain only safe pad identifiers")
+    }
+    return values.compactMap(validatedPadID)
 }
 
 private func requiredPromptPadID(_ arguments: [String: String]?) throws -> String {
