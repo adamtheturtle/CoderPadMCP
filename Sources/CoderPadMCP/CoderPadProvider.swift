@@ -541,8 +541,16 @@ private func dispatchScreenOrWrite(
         ) {
             return errorResult(error)
         }
+        let rawCandidateEmail = stringArgument(arguments, "candidateEmail")
+        if let error = screenCandidateEmailValidationError(rawCandidateEmail) {
+            return errorResult(error)
+        }
 
-        return await toolResult(screenGet("/tests", account: account, query: screenTestQuery(arguments)))
+        return await toolResult(screenGet(
+            "/tests",
+            account: account,
+            query: screenTestQuery(arguments, candidateEmail: normalizedScreenCandidateEmail(rawCandidateEmail)),
+        ))
 
     case "screen_get_test":
         guard let test = positiveID(strictIntArgument(arguments, "test")) else {
@@ -585,12 +593,12 @@ private func dispatchScreenOrWrite(
     }
 }
 
-private func screenTestQuery(_ arguments: [String: Value]?) -> [URLQueryItem] {
+private func screenTestQuery(_ arguments: [String: Value]?, candidateEmail: String?) -> [URLQueryItem] {
     var query: [URLQueryItem] = []
     if let campaign = strictIntArgument(arguments, "campaignId") {
         query.append(URLQueryItem(name: "campaignId", value: String(campaign)))
     }
-    if let email = stringArgument(arguments, "candidateEmail") {
+    if let email = candidateEmail {
         query.append(URLQueryItem(name: "candidateEmail", value: email))
     }
     if let start = strictIntArgument(arguments, "start") {

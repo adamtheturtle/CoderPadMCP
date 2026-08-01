@@ -83,6 +83,16 @@ public func ownerEmailValidationError(_ email: String?) -> String? {
     return nil
 }
 
+public func normalizedScreenCandidateEmail(_ email: String?) -> String? {
+    guard let value = email?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else { return nil }
+    return value
+}
+
+public func screenCandidateEmailValidationError(_ email: String?) -> String? {
+    guard let email = normalizedScreenCandidateEmail(email), ownerEmailValidationError(email) != nil else { return nil }
+    return "candidateEmail must be a valid email address."
+}
+
 public func padSeedValidationError(questionID: Int?, contents: String?) -> String? {
     // Server question ids are positive; zero/negative values only come from
     // malformed tool calls and would produce ambiguous seed behavior (#1611).
