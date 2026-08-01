@@ -131,6 +131,17 @@ struct AccountsTests {
     }
 
     @Test
+    func `configured account count is bounded`() {
+        let accounts: [[String: Any]] = (1 ... (maxConfiguredAccounts + 1)).map {
+            ["name": "Account \($0)", "api_key": "key-\($0)", "default": $0 == 1]
+        }
+
+        #expect(throws: MCPConfigError.tooManyAccounts(limit: maxConfiguredAccounts)) {
+            try makeAccountSet(config: ["accounts": accounts], environment: [:])
+        }
+    }
+
+    @Test
     func `config base URL rejects plaintext HTTP even with a host`() throws {
         let config: [String: Any] = ["accounts": [
             ["name": "Acme", "api_key": "a", "base_url": "http://coderpad.acme.internal"],

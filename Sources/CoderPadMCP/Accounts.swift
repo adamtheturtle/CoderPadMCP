@@ -13,6 +13,11 @@
 
 import Foundation
 
+/// Operational ceiling for one server process. Account/resource directory responses
+/// include every account, so accepting thousands from a 1 MiB config would create
+/// disproportionate memory use and model-context output.
+public let maxConfiguredAccounts = 100
+
 /// One configured CoderPad account the standalone server can act as.
 public struct MCPAccount: Equatable, Sendable {
     /// Stable host-defined identity used to disambiguate accounts with the same name.
@@ -154,6 +159,7 @@ private func accountNamesEqual(_ lhs: String, _ rhs: String) -> Bool {
 /// Why a configuration couldn't be turned into a usable account set.
 public enum MCPConfigError: Error, Equatable {
     case noAccounts
+    case tooManyAccounts(limit: Int)
     case missingAPIKey(account: String)
     case duplicateName(String)
     case multipleDefaultAccounts([String])
@@ -378,6 +384,9 @@ public func makeAccountSet(config: [String: Any]?, environment: [String: String]
     if let config {
         guard let rawAccounts = config["accounts"] as? [[String: Any]], !rawAccounts.isEmpty else {
             throw MCPConfigError.noAccounts
+        }
+        guard rawAccounts.count <= maxConfiguredAccounts else {
+            throw MCPConfigError.tooManyAccounts(limit: maxConfiguredAccounts)
         }
 
         var accounts: [MCPAccount] = []

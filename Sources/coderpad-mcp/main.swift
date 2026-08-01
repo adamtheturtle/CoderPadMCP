@@ -10,6 +10,8 @@ private func configurationFailure(_ error: Error) -> String {
     case MCPConfigError.noAccounts:
         "coderpad-mcp: no accounts configured. Set CODERPAD_API_KEY, or point "
             + "CODERPAD_MCP_CONFIG at a config file with an \"accounts\" array.\n"
+    case let MCPConfigError.tooManyAccounts(limit):
+        "coderpad-mcp: the account configuration exceeds the \(limit)-account limit.\n"
     case let MCPConfigError.missingAPIKey(account):
         "coderpad-mcp: account \"\(account)\" is missing its \"api_key\".\n"
     case let MCPConfigError.duplicateName(name):
