@@ -10,6 +10,27 @@ import Foundation
 public let maxPadTitleCharacters = 255
 public let maxOwnerEmailBytes = 254
 
+public let creatablePadLanguages = [
+    "python3", "python2", "javascript", "typescript", "nodejs", "swift", "go", "rust",
+    "java", "kotlin", "scala", "ruby", "c", "cpp", "csharp", "objective-c", "php", "r",
+    "sql", "mysql", "postgresql", "bash", "shell", "elixir", "erlang", "haskell", "perl",
+    "lua", "dart", "clojure", "ocaml", "fsharp", "julia", "solidity", "tcl", "verilog",
+    "html", "css", "markdown", "plaintext",
+]
+
+public func validatedCreatePadLanguage(_ language: String?) -> String? {
+    guard let language else { return nil }
+
+    let normalized = language.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    return creatablePadLanguages.contains(normalized) ? normalized : nil
+}
+
+public func createPadLanguageValidationError(_ language: String?) -> String? {
+    guard let language, validatedCreatePadLanguage(language) == nil else { return nil }
+
+    return "language must be one of: \(creatablePadLanguages.joined(separator: ", "))."
+}
+
 public func padTitleValidationError(_ title: String?) -> String? {
     guard let title, title.count > maxPadTitleCharacters else { return nil }
 

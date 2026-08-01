@@ -80,6 +80,14 @@ import Testing
     #expect(ownerEmailValidationError(nil) == nil)
 }
 
+@Test func `create pad language validation canonicalizes supported codes`() {
+    #expect(validatedCreatePadLanguage(" Python3 \n") == "python3")
+    #expect(validatedCreatePadLanguage("OBJECTIVE-C") == "objective-c")
+    #expect(validatedCreatePadLanguage("react") == nil)
+    #expect(validatedCreatePadLanguage("definitely-not-a-language") == nil)
+    #expect(createPadLanguageValidationError("react")?.contains("python3") == true)
+}
+
 @Test func `pad filenames reject traversal and remain unique`() {
     let environment = PadCodeEnvironment(id: 1, object: [
         "file_contents": [

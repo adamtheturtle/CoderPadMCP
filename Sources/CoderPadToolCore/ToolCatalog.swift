@@ -45,6 +45,7 @@ public func mcpStringSchema(
     _ description: String,
     minLength: Int? = nil,
     maxLength: Int? = nil,
+    allowedValues: [String]? = nil,
 ) -> [String: Any] {
     var schema: [String: Any] = ["type": "string", "description": description]
     if let minLength {
@@ -52,6 +53,9 @@ public func mcpStringSchema(
     }
     if let maxLength {
         schema["maxLength"] = maxLength
+    }
+    if let allowedValues {
+        schema["enum"] = allowedValues
     }
     return schema
 }
@@ -279,7 +283,10 @@ public nonisolated(unsafe) let coderPadWriteToolDescriptors: [[String: Any]] =
                 + "including its slug/id and URL.",
             properties: withAccount([
                 "title": mcpStringSchema("Optional pad title.", maxLength: maxPadTitleCharacters),
-                "language": mcpStringSchema("Optional language, e.g. \"python3\"."),
+                "language": mcpStringSchema(
+                    "Optional single-file language supported by the pad-creation API.",
+                    allowedValues: creatablePadLanguages,
+                ),
                 "question_id": mcpIntSchema(
                     "Optional question id to seed the pad from. Mutually exclusive with contents.",
                     minimum: 1,

@@ -1262,6 +1262,11 @@ private func createPad(arguments: [String: Value]?, account: MCPAccount) async -
         return errorResult(error)
     }
     let ownerEmail = rawOwnerEmail.flatMap { $0.isEmpty ? nil : $0 }
+    let rawLanguage = optionalString(arguments, "language")
+    if let error = createPadLanguageValidationError(rawLanguage) {
+        return errorResult(error)
+    }
+    let language = validatedCreatePadLanguage(rawLanguage)
     if let error = padSeedValidationError(
         questionID: strictIntArgument(arguments, "question_id"),
         contents: presentWriteString(arguments, "contents"),
@@ -1273,7 +1278,7 @@ private func createPad(arguments: [String: Value]?, account: MCPAccount) async -
     if let title {
         body["title"] = title
     }
-    if let language = optionalString(arguments, "language") {
+    if let language {
         body["language"] = language
     }
     if let owner = ownerEmail {
