@@ -114,6 +114,23 @@ struct ArgumentTests {
     }
 
     @Test
+    func `write string budgets bound fields and escaped aggregate JSON`() {
+        let oversized = String(repeating: "x", count: maxMCPWriteFieldBytes + 1)
+        #expect(writeStringBudgetValidationError(
+            ["contents": .string(oversized)], fields: ["contents"],
+        ) == "contents must be at most \(maxMCPWriteFieldBytes) UTF-8 bytes.")
+
+        let controlHeavy = String(repeating: "\u{0001}", count: 100_000)
+        #expect(writeStringBudgetValidationError(
+            ["description": .string(controlHeavy), "solution": .string(controlHeavy)],
+            fields: ["description", "solution"],
+        ) == "The write body must be at most \(maxMCPWriteBodyBytes) JSON bytes.")
+        #expect(writeStringBudgetValidationError(
+            ["contents": .string("small")], fields: ["contents"],
+        ) == nil)
+    }
+
+    @Test
     func `pagination validation rejects invalid domains`() {
         #expect(pageValidationError(nil) == nil)
         #expect(pageValidationError(1) == nil)
@@ -223,6 +240,8 @@ struct ToolCatalogTests {
         #expect(try property("title", of: "update_pad")["minLength"] as? Int == 1)
         #expect(try property("title", of: "update_pad")["maxLength"] as? Int == maxPadTitleCharacters)
         #expect(try property("language", of: "create_pad")["enum"] as? [String] == creatablePadLanguages)
+        #expect(try property("contents", of: "create_pad")["maxLength"] as? Int == maxMCPWriteFieldBytes)
+        #expect(try property("description", of: "create_question")["maxLength"] as? Int == maxMCPWriteFieldBytes)
     }
 
     @Test

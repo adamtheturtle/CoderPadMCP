@@ -515,6 +515,18 @@ private func dispatchScreenOrWrite(
     account: MCPAccount,
     cache: CoderPadMCPCache?,
 ) async -> CallTool.Result {
+    let budgetedWriteFields = [
+        "create_pad": ["title", "language", "contents", "owner_email", "notes", "team_id"],
+        "update_pad": ["title", "notes", "owner_email", "language"],
+        "create_question": ["title", "language", "description", "solution", "contents"],
+        "update_question": ["title", "language", "description", "solution", "contents"],
+    ]
+    if let fields = budgetedWriteFields[name],
+       let error = writeStringBudgetValidationError(arguments, fields: fields)
+    {
+        return errorResult(error)
+    }
+
     switch name {
     case "screen_list_campaigns":
         return await toolResult(screenGet("/campaigns", account: account))

@@ -3,6 +3,7 @@
 //  CoderPadMCP
 //
 
+import Foundation
 import MCP
 
 /// Parses the write safety flag without failing open. Absent is a valid live
@@ -70,5 +71,40 @@ public func invalidIntegerArgument(
 ) -> String? {
     names.first { name in
         arguments?[name] != nil && strictIntArgument(arguments, name) == nil
+    }
+}
+
+/// Rejects oversized write strings before a dispatcher trims, copies, dry-runs, or
+/// JSON-encodes them. The aggregate uses the exact JSON string escape size plus a
+/// small structural allowance, so control-heavy input cannot evade a raw-byte sum.
+public func writeStringBudgetValidationError(
+    _ arguments: [String: Value]?,
+    fields: some Sequence<String>,
+) -> String? {
+    var encodedBytes = 256
+    for field in fields {
+        guard let value = presentWriteString(arguments, field) else { continue }
+        let rawBytes = value.utf8.count
+        guard rawBytes <= maxMCPWriteFieldBytes else {
+            return "\(field) must be at most \(maxMCPWriteFieldBytes) UTF-8 bytes."
+        }
+        encodedBytes += field.utf8.count + 4 + jsonEncodedStringByteCount(value)
+        guard encodedBytes <= maxMCPWriteBodyBytes else {
+            return "The write body must be at most \(maxMCPWriteBodyBytes) JSON bytes."
+        }
+    }
+    return nil
+}
+
+private func jsonEncodedStringByteCount(_ value: String) -> Int {
+    2 + value.unicodeScalars.reduce(into: 0) { count, scalar in
+        switch scalar.value {
+        case 0 ... 0x1F:
+            count += 6
+        case 0x22, 0x5C:
+            count += 2
+        default:
+            count += String(scalar).utf8.count
+        }
     }
 }

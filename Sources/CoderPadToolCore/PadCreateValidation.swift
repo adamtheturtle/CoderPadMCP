@@ -9,6 +9,8 @@ import Foundation
 
 public let maxPadTitleCharacters = 255
 public let maxOwnerEmailBytes = 254
+public let maxMCPWriteFieldBytes = 512 * 1024
+public let maxMCPWriteBodyBytes = 1024 * 1024
 
 public let creatablePadLanguages = [
     "python3", "python2", "javascript", "typescript", "nodejs", "swift", "go", "rust",
