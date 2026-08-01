@@ -261,6 +261,9 @@ struct AccountsTests {
         #expect(throws: MCPConfigError.missingAPIKey(account: "Acme")) {
             try makeAccountSet(config: ["accounts": [["name": "Acme"]]], environment: [:])
         }
+        #expect(throws: MCPConfigError.invalidCredential(account: "Acme", field: "api_key")) {
+            try makeAccountSet(config: ["accounts": [["name": "Acme", "api_key": 123]]], environment: [:])
+        }
         #expect(throws: MCPConfigError.duplicateName("acme")) {
             try makeAccountSet(config: ["accounts": [
                 ["name": "Acme", "api_key": "a"],

@@ -393,8 +393,7 @@ public func makeAccountSet(config: [String: Any]?, environment: [String: String]
                 name = fallbackName
             }
 
-            guard let key = try validatedCredential(entry["api_key"] as? String,
-                                                    account: name, field: "api_key")
+            guard let key = try optionalConfigCredential(entry, field: "api_key", account: name)
             else {
                 throw MCPConfigError.missingAPIKey(account: name)
             }
