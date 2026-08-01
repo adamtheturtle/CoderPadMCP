@@ -1299,8 +1299,12 @@ private func createPad(arguments: [String: Value]?, account: MCPAccount) async -
 }
 
 private func updatePad(id: String, arguments: [String: Value]?, account: MCPAccount) async -> CallTool.Result {
+    let title = presentWriteString(arguments, "title")
+    if let error = padUpdateTitleValidationError(title) {
+        return errorResult(error)
+    }
     var body: [String: Any] = [:]
-    if let title = presentWriteString(arguments, "title") {
+    if let title {
         body["title"] = title
     }
     if let notes = presentWriteString(arguments, "notes") {

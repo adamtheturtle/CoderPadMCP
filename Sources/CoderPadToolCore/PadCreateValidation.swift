@@ -16,6 +16,15 @@ public func padTitleValidationError(_ title: String?) -> String? {
     return "title must be at most \(maxPadTitleCharacters) characters."
 }
 
+public func padUpdateTitleValidationError(_ title: String?) -> String? {
+    guard let title else { return nil }
+    guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        return "title must not be empty or whitespace-only."
+    }
+
+    return padTitleValidationError(title)
+}
+
 public func ownerEmailValidationError(_ email: String?) -> String? {
     guard let email, !email.isEmpty else { return nil }
     guard email.utf8.count <= maxOwnerEmailBytes,

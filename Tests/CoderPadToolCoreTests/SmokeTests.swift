@@ -62,6 +62,13 @@ import Testing
     #expect(padTitleValidationError(String(repeating: "a", count: 256)) == "title must be at most 255 characters.")
 }
 
+@Test func `pad update title validation rejects blank values`() {
+    #expect(padUpdateTitleValidationError(nil) == nil)
+    #expect(padUpdateTitleValidationError("Interview") == nil)
+    #expect(padUpdateTitleValidationError("") == "title must not be empty or whitespace-only.")
+    #expect(padUpdateTitleValidationError(" \n\t") == "title must not be empty or whitespace-only.")
+}
+
 @Test func `pad owner email validation rejects malformed addresses`() {
     for email in [
         "not an address", "a@localhost", "a@@example.com", "a@example..com",

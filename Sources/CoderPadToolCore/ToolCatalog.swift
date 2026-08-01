@@ -41,8 +41,15 @@ public func mcpToolDescriptor(
     return descriptor
 }
 
-public func mcpStringSchema(_ description: String, maxLength: Int? = nil) -> [String: Any] {
+public func mcpStringSchema(
+    _ description: String,
+    minLength: Int? = nil,
+    maxLength: Int? = nil,
+) -> [String: Any] {
     var schema: [String: Any] = ["type": "string", "description": description]
+    if let minLength {
+        schema["minLength"] = minLength
+    }
     if let maxLength {
         schema["maxLength"] = maxLength
     }
@@ -295,7 +302,7 @@ public nonisolated(unsafe) let coderPadWriteToolDescriptors: [[String: Any]] =
                 + "cannot delete it.",
             properties: withAccount([
                 "pad": mcpStringSchema("The pad's slug or id."),
-                "title": mcpStringSchema("New title."),
+                "title": mcpStringSchema("New title.", minLength: 1, maxLength: maxPadTitleCharacters),
                 "notes": mcpStringSchema("New private interviewer notes."),
                 "owner_email": mcpStringSchema("New owner email."),
                 "language": mcpStringSchema("New language, e.g. \"python3\"."),

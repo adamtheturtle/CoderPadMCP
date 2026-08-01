@@ -215,6 +215,8 @@ struct ToolCatalogTests {
     @Test
     func `create pad schema declares the title limit`() throws {
         #expect(try property("title", of: "create_pad")["maxLength"] as? Int == maxPadTitleCharacters)
+        #expect(try property("title", of: "update_pad")["minLength"] as? Int == 1)
+        #expect(try property("title", of: "update_pad")["maxLength"] as? Int == maxPadTitleCharacters)
     }
 
     @Test
