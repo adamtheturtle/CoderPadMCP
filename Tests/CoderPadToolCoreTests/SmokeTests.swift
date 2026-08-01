@@ -62,6 +62,17 @@ import Testing
     #expect(padTitleValidationError(String(repeating: "a", count: 256)) == "title must be at most 255 characters.")
 }
 
+@Test func `pad owner email validation rejects malformed addresses`() {
+    for email in [
+        "not an address", "a@localhost", "a@@example.com", "a@example..com",
+        " a@example.com", "a@example.com\n", "a@-example.com", "ü@example.com",
+    ] {
+        #expect(ownerEmailValidationError(email) != nil)
+    }
+    #expect(ownerEmailValidationError("ada.lovelace+interview@example.co.uk") == nil)
+    #expect(ownerEmailValidationError(nil) == nil)
+}
+
 @Test func `pad filenames reject traversal and remain unique`() {
     let environment = PadCodeEnvironment(id: 1, object: [
         "file_contents": [

@@ -8,11 +8,47 @@
 import Foundation
 
 public let maxPadTitleCharacters = 255
+public let maxOwnerEmailBytes = 254
 
 public func padTitleValidationError(_ title: String?) -> String? {
     guard let title, title.count > maxPadTitleCharacters else { return nil }
 
     return "title must be at most \(maxPadTitleCharacters) characters."
+}
+
+public func ownerEmailValidationError(_ email: String?) -> String? {
+    guard let email, !email.isEmpty else { return nil }
+    guard email.utf8.count <= maxOwnerEmailBytes,
+          email.allSatisfy(\.isASCII),
+          !email.contains(where: \.isWhitespace)
+    else {
+        return "owner_email must be a valid email address."
+    }
+
+    let parts = email.split(separator: "@", omittingEmptySubsequences: false)
+    guard parts.count == 2 else { return "owner_email must be a valid email address." }
+    let local = parts[0]
+    let domain = parts[1]
+    let localSymbols = Set("!#$%&'*+-/=?^_`{|}~")
+    guard (1 ... 64).contains(local.utf8.count),
+          !local.hasPrefix("."), !local.hasSuffix("."), !local.contains(".."),
+          local.allSatisfy({ $0 == "." || $0.isLetter || $0.isNumber || localSymbols.contains($0) })
+    else {
+        return "owner_email must be a valid email address."
+    }
+
+    let labels = domain.split(separator: ".", omittingEmptySubsequences: false)
+    guard labels.count >= 2,
+          labels.allSatisfy({ label in
+              !label.isEmpty && label.utf8.count <= 63
+                  && !label.hasPrefix("-") && !label.hasSuffix("-")
+                  && label.allSatisfy { $0.isLetter || $0.isNumber || $0 == "-" }
+          })
+    else {
+        return "owner_email must be a valid email address."
+    }
+
+    return nil
 }
 
 public func padSeedValidationError(questionID: Int?, contents: String?) -> String? {

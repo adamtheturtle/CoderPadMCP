@@ -278,7 +278,10 @@ public nonisolated(unsafe) let coderPadWriteToolDescriptors: [[String: Any]] =
                     minimum: 1,
                 ),
                 "contents": mcpStringSchema("Optional starting code. Mutually exclusive with question_id."),
-                "owner_email": mcpStringSchema("Optional owner email; defaults to the account's user."),
+                "owner_email": mcpStringSchema(
+                    "Optional owner email; defaults to the account's user.",
+                    maxLength: maxOwnerEmailBytes,
+                ),
                 "notes": mcpStringSchema("Optional private interviewer notes."),
                 "team_id": mcpStringSchema("Optional team id to link the pad to (org owners only)."),
                 "dry_run": mcpBoolSchema("Validate and preview the request without creating anything."),
