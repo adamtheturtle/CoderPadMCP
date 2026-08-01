@@ -392,10 +392,10 @@ private func isValidDateBound(_ value: String) -> Bool {
 
 /// Adds active `created_after`/`created_before` bounds to a filters echo.
 public func addDateFilters(_ filters: inout [String: Any], after: String?, before: String?) {
-    if let after, !after.isEmpty {
+    if let after = normalizedFilterValue(after) {
         filters["created_after"] = after
     }
-    if let before, !before.isEmpty {
+    if let before = normalizedFilterValue(before) {
         filters["created_before"] = before
     }
 }

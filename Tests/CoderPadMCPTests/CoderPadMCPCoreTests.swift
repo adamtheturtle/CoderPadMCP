@@ -466,6 +466,16 @@ struct AggregationTests {
     }
 
     @Test
+    func `date filter echo trims bounds and omits whitespace-only values`() {
+        var filters: [String: Any] = [:]
+
+        addDateFilters(&filters, after: "   ", before: " 2026-01-31\n")
+
+        #expect(filters["created_after"] == nil)
+        #expect(filters["created_before"] as? String == "2026-01-31")
+    }
+
+    @Test
     func `compactPads keeps only the compact keys`() {
         let rich: [[String: Any]] = [[
             "id": "abc", "title": "T", "owner_email": "a@x.com", "state": "active",
