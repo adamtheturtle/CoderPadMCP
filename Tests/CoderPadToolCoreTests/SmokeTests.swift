@@ -1,4 +1,5 @@
 import CoderPadToolCore
+import Foundation
 import Testing
 
 @Test func `core validation is runnable`() {
@@ -21,10 +22,14 @@ import Testing
     let first = tracker.acceptPad(["id": " pad-1 "])
     let duplicate = tracker.acceptPad(["slug": "pad-1"])
     let numeric = tracker.acceptPad(["id": 42])
+    let nullFallback = tracker.acceptPad(["id": NSNull(), "slug": "pad-2"])
+    let invalidFallback = tracker.acceptPad(["id": 0, "slug": "pad-3"])
     let missing = tracker.acceptPad(["title": "Missing"])
     #expect(first == .accepted)
     #expect(duplicate == .duplicate)
     #expect(numeric == .accepted)
+    #expect(nullFallback == .accepted)
+    #expect(invalidFallback == .accepted)
     #expect(missing == .invalid)
 }
 

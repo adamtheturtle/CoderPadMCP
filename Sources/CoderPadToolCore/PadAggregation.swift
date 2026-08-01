@@ -73,7 +73,7 @@ public struct RecordIdentityTracker: Sendable {
     public init() {}
 
     public mutating func acceptPad(_ pad: [String: Any]) -> RecordIdentityDisposition {
-        guard let identity = stableIdentity(pad["id"] ?? pad["slug"]) else { return .invalid }
+        guard let identity = stableIdentity(pad["id"]) ?? stableIdentity(pad["slug"]) else { return .invalid }
 
         return seen.insert(identity).inserted ? .accepted : .duplicate
     }
