@@ -208,6 +208,9 @@ private func trimmedNonEmptyValue(_ raw: String?) -> String? {
 /// nothing safe remains, so the caller falls back to a synthesized name (#1593).
 func sanitizedFilePath(_ raw: String?) -> String? {
     guard let value = trimmedNonEmptyValue(raw),
+          !value.hasPrefix("/"),
+          !value.contains("\\"),
+          !value.contains(":"),
           !value.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) })
     else { return nil }
 

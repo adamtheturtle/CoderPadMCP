@@ -61,13 +61,18 @@ import Testing
     let environment = PadCodeEnvironment(id: 1, object: [
         "file_contents": [
             ["path": "../../secret.txt", "contents": "first"],
+            ["path": #"..\secret.txt"#, "contents": "windows traversal"],
+            ["path": #"C:\temp\payload.swift"#, "contents": "windows absolute"],
+            ["path": "/etc/passwd", "contents": "posix absolute"],
             ["path": "main.txt", "contents": "second"],
             ["path": "main.txt", "contents": "third"],
         ],
     ])
     let files = padCodeFiles(pad: [:], environments: [environment], maxFileChars: nil)
 
-    #expect(files.compactMap { $0["filename"] as? String } == ["main.txt", "main-2.txt", "main-3.txt"])
+    #expect(files.compactMap { $0["filename"] as? String } == [
+        "main.txt", "main-2.txt", "main-3.txt", "main-4.txt", "main-5.txt", "main-6.txt",
+    ])
 }
 
 @Test func `pad filename limits count UTF-8 bytes`() {
