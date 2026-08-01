@@ -123,6 +123,18 @@ import Testing
     #expect(files[2]["language"] as? String == "ruby")
 }
 
+@Test func `pad filenames are unique on case-insensitive filesystems`() {
+    let environment = PadCodeEnvironment(id: 1, object: [
+        "file_contents": [
+            ["path": "A.swift", "contents": "one"],
+            ["path": "a.swift", "contents": "two"],
+        ],
+    ])
+    let files = padCodeFiles(pad: [:], environments: [environment], maxFileChars: nil)
+
+    #expect(files.compactMap { $0["filename"] as? String } == ["A.swift", "a-2.swift"])
+}
+
 @Test func `aggregate values trim whitespace and classify blanks`() {
     let records: [[String: Any]] = [
         ["owner_email": "  ada@example.com \n"],

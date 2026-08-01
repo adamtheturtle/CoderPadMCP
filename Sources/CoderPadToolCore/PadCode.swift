@@ -232,7 +232,7 @@ func sanitizedFilePath(_ raw: String?) -> String? {
 }
 
 private func uniqueFilename(_ filename: String, seen: inout Set<String>) -> String {
-    guard !seen.insert(filename).inserted else { return filename }
+    guard !seen.insert(filenameConflictKey(filename)).inserted else { return filename }
 
     let components = filename.split(separator: "/", omittingEmptySubsequences: false)
     let directory = components.dropLast().joined(separator: "/")
@@ -254,11 +254,18 @@ private func uniqueFilename(_ filename: String, seen: inout Set<String>) -> Stri
         let candidate = directory.isEmpty || directory == "."
             ? component
             : "\(directory)/\(component)"
-        if seen.insert(candidate).inserted {
+        if seen.insert(filenameConflictKey(candidate)).inserted {
             return candidate
         }
         suffix += 1
     }
+}
+
+/// A materialization key for the default case-insensitive macOS filesystem. Canonical
+/// normalization also prevents visually identical composed/decomposed names colliding.
+private func filenameConflictKey(_ filename: String) -> String {
+    filename.precomposedStringWithCanonicalMapping
+        .folding(options: [.caseInsensitive], locale: Locale(identifier: "en_US_POSIX"))
 }
 
 /// The full get_pad_code payload for a pad. Environments whose fetch failed must be
