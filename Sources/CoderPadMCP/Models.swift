@@ -43,3 +43,10 @@ public struct APIResponse: Sendable {
         (200 ..< 300).contains(status)
     }
 }
+
+/// Whether a response body is syntactically valid JSON. Endpoints are deliberately
+/// passed through without schema decoding, but an HTTP 200 proxy/login page must not
+/// be advertised to MCP clients as successful JSON.
+public func isValidJSON(_ data: Data) -> Bool {
+    (try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])) != nil
+}

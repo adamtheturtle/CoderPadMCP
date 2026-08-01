@@ -676,4 +676,12 @@ struct PadCodeTests {
         #expect(fromText.body == "Request failed")
         #expect(jsonObject(fromText.data) == nil)
     }
+
+    @Test
+    func `JSON response validation rejects successful proxy pages`() {
+        #expect(isValidJSON(Data(#"{"quota":1}"#.utf8)))
+        #expect(isValidJSON(Data("[1,2,3]".utf8)))
+        #expect(!isValidJSON(Data("<html>Sign in</html>".utf8)))
+        #expect(!isValidJSON(Data([0xFF])))
+    }
 }

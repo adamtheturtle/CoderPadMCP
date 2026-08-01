@@ -703,6 +703,9 @@ private func readCoderPadResource(
                 ),
             )
         }
+        guard isValidJSON(response.data) else {
+            throw MCPError.internalError("CoderPad returned invalid JSON reading \(uri).")
+        }
 
         return ReadResource.Result(contents: [.text(response.body, uri: uri, mimeType: "application/json")])
     }
