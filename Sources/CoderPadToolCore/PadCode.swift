@@ -312,9 +312,14 @@ private func suffixedUniqueFilename(_ filename: String, seen: inout Set<String>)
     }
     var suffix = 2
     while true {
-        let component = extensionName.isEmpty
-            ? "\(stem)-\(suffix)"
-            : "\(stem)-\(suffix).\(extensionName)"
+        let suffixText = "-\(suffix)"
+        let extensionText = extensionName.isEmpty ? "" : ".\(extensionName)"
+        let boundedExtension = utf8Prefix(
+            extensionText,
+            maxBytes: max(0, 255 - suffixText.utf8.count - 1),
+        )
+        let boundedStem = utf8Prefix(stem, maxBytes: 255 - suffixText.utf8.count - boundedExtension.utf8.count)
+        let component = boundedStem + suffixText + boundedExtension
         let candidate = directory.isEmpty || directory == "."
             ? component
             : "\(directory)/\(component)"
@@ -324,6 +329,16 @@ private func suffixedUniqueFilename(_ filename: String, seen: inout Set<String>)
         }
         suffix += 1
     }
+}
+
+private func utf8Prefix(_ value: String, maxBytes: Int) -> String {
+    guard value.utf8.count > maxBytes else { return value }
+    let utf8 = value.utf8
+    var cut = utf8.index(utf8.startIndex, offsetBy: maxBytes)
+    while cut > utf8.startIndex, String.Index(cut, within: value) == nil {
+        cut = utf8.index(before: cut)
+    }
+    return String(value[..<(String.Index(cut, within: value) ?? value.startIndex)])
 }
 
 private func filenameIsAvailable(_ filename: String, seen: Set<String>) -> Bool {

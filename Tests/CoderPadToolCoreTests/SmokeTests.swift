@@ -115,6 +115,23 @@ import Testing
     #expect(files.first?["filename"] as? String == "main.txt")
 }
 
+@Test func `duplicate pad filenames remain within the component byte limit`() {
+    let filename = String(repeating: "a", count: 251) + ".txt"
+    let environment = PadCodeEnvironment(id: 1, object: [
+        "file_contents": [
+            ["path": filename, "contents": "one"],
+            ["path": filename, "contents": "two"],
+        ],
+    ])
+
+    let names = padCodeFiles(pad: [:], environments: [environment], maxFileChars: nil)
+        .compactMap { $0["filename"] as? String }
+
+    #expect(names.count == 2)
+    #expect(names.allSatisfy { $0.utf8.count <= 255 })
+    #expect(names[1].hasSuffix("-2.txt"))
+}
+
 @Test func `pad file language metadata is bounded and control-free`() {
     let environment = PadCodeEnvironment(id: 1, object: [
         "language": "swift",
