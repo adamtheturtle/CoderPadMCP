@@ -210,16 +210,6 @@ private func isSafeDecodedSegment(_ segment: String) -> Bool {
         && !segment.unicodeScalars.contains { CharacterSet.controlCharacters.contains($0) }
 }
 
-/// Pad ids flow into downstream REST URL construction. Keep their grammar in
-/// sync with the app's `PadIDValidation`: short ASCII-alphanumeric tokens with
-/// optional hyphens or underscores (#1578).
-private func isSafePadID(_ id: String) -> Bool {
-    (1 ... 64).contains(id.count) && id.allSatisfy { character in
-        character == "-" || character == "_"
-            || (character.isASCII && (character.isLetter || character.isNumber))
-    }
-}
-
 /// Whether a route literal matches, case-insensitively (#1581).
 private func isRoute(_ segment: String?, _ literal: String) -> Bool {
     segment?.lowercased() == literal

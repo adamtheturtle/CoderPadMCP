@@ -18,7 +18,7 @@ public func validatedPadID(_ id: String?) -> String? {
     guard let id else { return nil }
 
     let normalized = id.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !normalized.isEmpty else { return nil }
+    guard isSafePadID(normalized) else { return nil }
 
     let unsigned = normalized.first.map { $0 == "+" || $0 == "-" } == true
         ? normalized.dropFirst()
@@ -28,4 +28,14 @@ public func validatedPadID(_ id: String?) -> String? {
     }
 
     return normalized
+}
+
+/// The grammar accepted by both tool arguments and resource URIs. Keeping pad ids
+/// to one bounded ASCII path component prevents dot-segment or separator traversal
+/// when the value is appended to an authenticated REST path.
+public func isSafePadID(_ id: String) -> Bool {
+    (1 ... 64).contains(id.count) && id.allSatisfy { character in
+        character == "-" || character == "_"
+            || (character.isASCII && (character.isLetter || character.isNumber))
+    }
 }

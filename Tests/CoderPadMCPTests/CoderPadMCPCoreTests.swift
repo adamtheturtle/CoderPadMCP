@@ -138,6 +138,11 @@ struct ArgumentTests {
         #expect(validatedPadID("+999999999999999999999999") == nil)
         #expect(validatedPadID(" \n ") == nil)
         #expect(validatedPadID(" pad-slug \n") == "pad-slug")
+        #expect(validatedPadID("../quota") == nil)
+        #expect(validatedPadID("abc/../../organization") == nil)
+        #expect(validatedPadID(".") == nil)
+        #expect(validatedPadID(String(repeating: "a", count: 65)) == nil)
+        #expect(validatedPadID("abc_123-XYZ") == "abc_123-XYZ")
     }
 }
 
