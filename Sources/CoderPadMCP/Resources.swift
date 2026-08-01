@@ -157,7 +157,8 @@ public func parseResourceURI(_ uri: String) -> ResourceRequest? {
     // ample for account names while bounding allocations and downstream logs (#1577).
     guard uri.utf8.count <= 5120,
           let components = URLComponents(string: uri),
-          components.scheme?.lowercased() == resourceScheme
+          components.scheme?.lowercased() == resourceScheme,
+          components.percentEncodedQuery == nil
     else {
         return nil
     }

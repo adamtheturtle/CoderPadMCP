@@ -193,6 +193,13 @@ struct ResourcesTests {
         #expect(parseResourceURI("coderpad://question/42") == .question(42))
     }
 
+    @Test
+    func `parseResourceURI rejects query components`() {
+        #expect(parseResourceURI("coderpad://quota?account=other") == nil)
+        #expect(parseResourceURI("coderpad://pad/abc123?view=code") == nil)
+        #expect(parseResourceURI("coderpad://quota?") == nil)
+    }
+
     /// URI schemes and route literals are case-insensitive per standard; ids
     /// keep their exact case (#1581).
     @Test
