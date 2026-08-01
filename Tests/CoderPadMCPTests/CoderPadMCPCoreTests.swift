@@ -607,8 +607,8 @@ struct PadCodeTests {
 
     @Test
     func `environmentIDs coerces int and string ids and drops duplicates`() {
-        let pad: [String: Any] = ["pad_environment_ids": [1, "2", 3, "2", 1]]
-        #expect(environmentIDs(in: pad) == [1, 2, 3])
+        let pad: [String: Any] = ["pad_environment_ids": [1, "2", 3, "2", 1, "\n4\t"]]
+        #expect(environmentIDs(in: pad) == [1, 2, 3, 4])
         #expect(environmentIDs(in: [:]).isEmpty)
     }
 

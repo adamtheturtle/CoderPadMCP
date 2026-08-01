@@ -139,7 +139,7 @@ private func environmentID(from value: Any) -> Int? {
     }
     let id: Int? = switch value {
     case let int as Int: int
-    case let string as String: Int(string.trimmingCharacters(in: .whitespaces))
+    case let string as String: Int(string.trimmingCharacters(in: .whitespacesAndNewlines))
     default: nil
     }
     guard let id, id > 0 else { return nil }
