@@ -112,6 +112,14 @@ private struct PadCodeFileAssembly {
     let omittedEnvironmentIDs: [Int]
 }
 
+public let maxPadCodeEnvironments = 100
+public let maxConcurrentPadCodeEnvironmentRequests = 6
+
+public func environmentCountValidationError(_ ids: [Int]) -> String? {
+    guard ids.count > maxPadCodeEnvironments else { return nil }
+    return "The pad references more than \(maxPadCodeEnvironments) environments."
+}
+
 /// The numeric environment ids referenced by a pad, coercing int and integer-string
 /// forms only, keeping positive values, and preserving first-seen order while
 /// dropping duplicates. Booleans, floats, and other JSON shapes are rejected rather

@@ -642,24 +642,26 @@ private func padCodeJSON(id: String, maxFileChars: Int?, account: MCPAccount) as
         throw MCPError.internalError("Could not parse the pad response as JSON.")
     }
 
-    // Fetched concurrently: a pad with several environments used to pay one full
-    // round-trip after another, so latency added up linearly on the hot path behind
-    // get_pad_code and the pad-code resource (#2260). Results are collected by index
-    // and then read back in order, so the output — and which ids are reported as
-    // failed — is identical to the sequential version.
+    // Fetch in bounded concurrent batches, retaining source order in the result (#2260, #42).
     let ids = environmentIDs(in: pad)
+    if let error = environmentCountValidationError(ids) {
+        throw MCPError.internalError(error)
+    }
     // The response bodies cross the task boundary, not the parsed objects:
     // `[String: Any]` is not Sendable, so parsing happens on the collecting side.
     var bodies: [Int: Data] = [:]
-    await withTaskGroup(of: (offset: Int, body: Data?).self) { group in
-        for (offset, environmentID) in ids.enumerated() {
-            group.addTask {
-                let response = await apiGet("/api/pad_environments/\(environmentID)", account: account)
-                return (offset, response.ok ? response.data : nil)
+    for batchStart in stride(from: 0, to: ids.count, by: maxConcurrentPadCodeEnvironmentRequests) {
+        let offsets = batchStart ..< min(batchStart + maxConcurrentPadCodeEnvironmentRequests, ids.count)
+        await withTaskGroup(of: (offset: Int, body: Data?).self) { group in
+            for offset in offsets {
+                group.addTask {
+                    let response = await apiGet("/api/pad_environments/\(ids[offset])", account: account)
+                    return (offset, response.ok ? response.data : nil)
+                }
             }
-        }
-        for await result in group {
-            bodies[result.offset] = result.body
+            for await result in group {
+                bodies[result.offset] = result.body
+            }
         }
     }
 

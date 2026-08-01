@@ -609,6 +609,13 @@ struct PadCodeTests {
     }
 
     @Test
+    func `environment count validation bounds provider fanout`() {
+        #expect(environmentCountValidationError(Array(1 ... maxPadCodeEnvironments)) == nil)
+        #expect(environmentCountValidationError(Array(1 ... (maxPadCodeEnvironments + 1))) != nil)
+        #expect(maxConcurrentPadCodeEnvironmentRequests < maxPadCodeEnvironments)
+    }
+
+    @Test
     func `multi-file environments take precedence and carry filenames + ids`() {
         let pad: [String: Any] = ["title": "Interview", "contents": "legacy code", "language": "python"]
         let env = PadCodeEnvironment(id: 9, object: [
