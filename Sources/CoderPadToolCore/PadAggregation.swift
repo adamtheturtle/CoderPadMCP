@@ -16,7 +16,8 @@ import Foundation
 /// against the configured account origin rather than following a server-supplied URL
 /// with credentials. Extracting only its `page` query value preserves that boundary.
 /// Plain tokens remain compatible with proxies that return only the page value, and
-/// numbers are accepted in any JSON numeric form (#1599). Booleans are not tokens.
+/// positive whole numbers are accepted in JSON numeric forms (#1599). Booleans,
+/// zero, negative values, and fractional values are not tokens.
 public func nextPageToken(_ value: Any?) -> String? {
     if value is Bool {
         return nil
@@ -36,10 +37,14 @@ public func nextPageToken(_ value: Any?) -> String? {
         return trimmed
 
     case let number as Int:
-        return String(number)
+        return number > 0 ? String(number) : nil
 
     case let number as NSNumber:
-        return number.stringValue
+        let value = number.doubleValue
+        guard value.isFinite, value > 0, value.rounded() == value,
+              value <= Double(Int64.max)
+        else { return nil }
+        return String(Int64(value))
 
     default:
         return nil
