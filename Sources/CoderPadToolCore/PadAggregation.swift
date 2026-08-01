@@ -107,9 +107,14 @@ public struct RecordIdentityTracker: Sendable {
     }
 
     private func stableIdentity(_ raw: Any?) -> String? {
-        if let value = raw as? String {
-            let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-            return trimmed.isEmpty ? nil : trimmed
+        if let value = validatedPadID(raw as? String) {
+            let unsigned = value.first.map { $0 == "+" || $0 == "-" } == true
+                ? value.dropFirst()
+                : value[...]
+            if !unsigned.isEmpty, unsigned.allSatisfy(\.isNumber) {
+                return Int(value).map(String.init)
+            }
+            return value
         }
         if let value = raw as? Int, value > 0 {
             return String(value)

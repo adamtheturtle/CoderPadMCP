@@ -18,16 +18,15 @@ public func validatedPadID(_ id: String?) -> String? {
     guard let id else { return nil }
 
     let normalized = id.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard isSafePadID(normalized) else { return nil }
-
     let unsigned = normalized.first.map { $0 == "+" || $0 == "-" } == true
         ? normalized.dropFirst()
         : normalized[...]
     if !unsigned.isEmpty, unsigned.allSatisfy(\.isNumber) {
         guard let numeric = Int(normalized), numeric > 0 else { return nil }
+        return normalized
     }
 
-    return normalized
+    return isSafePadID(normalized) ? normalized : nil
 }
 
 /// The grammar accepted by both tool arguments and resource URIs. Keeping pad ids

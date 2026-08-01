@@ -46,6 +46,27 @@ import Testing
     #expect(missing == .invalid)
 }
 
+@Test func `pad record tracker validates and canonicalizes string identities`() {
+    var tracker = RecordIdentityTracker()
+    let numeric = tracker.acceptPad(["id": "01"])
+    let signedDuplicate = tracker.acceptPad(["id": "+1"])
+    let integerDuplicate = tracker.acceptPad(["id": 1])
+    let zero = tracker.acceptPad(["id": "0"])
+    let negative = tracker.acceptPad(["id": "-1"])
+    let control = tracker.acceptPad(["id": "pad\u{0}one"])
+    let format = tracker.acceptPad(["id": "pad\u{202E}one"])
+    let oversized = tracker.acceptPad(["id": String(repeating: "a", count: 65)])
+
+    #expect(numeric == .accepted)
+    #expect(signedDuplicate == .duplicate)
+    #expect(integerDuplicate == .duplicate)
+    #expect(zero == .invalid)
+    #expect(negative == .invalid)
+    #expect(control == .invalid)
+    #expect(format == .invalid)
+    #expect(oversized == .invalid)
+}
+
 @Test func `question record tracker deduplicates positive ids`() {
     var tracker = RecordIdentityTracker()
     let first = tracker.acceptQuestion(["id": 42])
