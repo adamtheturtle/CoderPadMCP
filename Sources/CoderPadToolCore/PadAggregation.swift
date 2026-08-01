@@ -358,7 +358,7 @@ private func iso8601Date(from value: String) -> Date? {
 private func isValidMonthBound(_ value: String) -> Bool {
     guard value.count == 7, value[value.index(value.startIndex, offsetBy: 4)] == "-",
           let month = Int(value.suffix(2)),
-          value.prefix(4).allSatisfy(\.isNumber),
+          isASCIIYear(value.prefix(4)),
           (1 ... 12).contains(month)
     else { return false }
 
@@ -369,7 +369,7 @@ private func isValidDateBound(_ value: String) -> Bool {
     guard value.count == 10,
           value[value.index(value.startIndex, offsetBy: 4)] == "-",
           value[value.index(value.startIndex, offsetBy: 7)] == "-",
-          value.prefix(4).allSatisfy(\.isNumber)
+          isASCIIYear(value.prefix(4))
     else { return false }
 
     let parts = value.split(separator: "-")
@@ -388,6 +388,11 @@ private func isValidDateBound(_ value: String) -> Bool {
 
     let resolved = calendar.dateComponents([.year, .month, .day], from: date)
     return resolved.year == year && resolved.month == month && resolved.day == day
+}
+
+private func isASCIIYear(_ value: Substring) -> Bool {
+    let scalars = value.unicodeScalars
+    return scalars.count == 4 && scalars.allSatisfy { (48 ... 57).contains($0.value) }
 }
 
 /// Adds active `created_after`/`created_before` bounds to a filters echo.

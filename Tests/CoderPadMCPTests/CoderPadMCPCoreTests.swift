@@ -463,6 +463,8 @@ struct AggregationTests {
         #expect(dateBoundValidationError(after: "yesterday", before: nil)?.contains("created_after") == true)
         #expect(dateBoundValidationError(after: "2026-99-99", before: nil)?.contains("created_after") == true)
         #expect(dateBoundValidationError(after: nil, before: "2026-02-31")?.contains("created_before") == true)
+        #expect(dateBoundValidationError(after: "１２３４-01", before: nil)?.contains("created_after") == true)
+        #expect(dateBoundValidationError(after: nil, before: "１２３４-01-01")?.contains("created_before") == true)
     }
 
     @Test
