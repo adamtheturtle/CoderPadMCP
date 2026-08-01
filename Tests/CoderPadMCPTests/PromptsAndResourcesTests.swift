@@ -200,6 +200,13 @@ struct ResourcesTests {
         #expect(parseResourceURI("coderpad://quota?") == nil)
     }
 
+    @Test
+    func `parseResourceURI rejects fragments`() {
+        #expect(parseResourceURI("coderpad://organization#members") == nil)
+        #expect(parseResourceURI("coderpad://pad/abc123#code") == nil)
+        #expect(parseResourceURI("coderpad://quota#") == nil)
+    }
+
     /// URI schemes and route literals are case-insensitive per standard; ids
     /// keep their exact case (#1581).
     @Test

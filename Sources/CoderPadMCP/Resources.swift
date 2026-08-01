@@ -158,7 +158,8 @@ public func parseResourceURI(_ uri: String) -> ResourceRequest? {
     guard uri.utf8.count <= 5120,
           let components = URLComponents(string: uri),
           components.scheme?.lowercased() == resourceScheme,
-          components.percentEncodedQuery == nil
+          components.percentEncodedQuery == nil,
+          components.percentEncodedFragment == nil
     else {
         return nil
     }
