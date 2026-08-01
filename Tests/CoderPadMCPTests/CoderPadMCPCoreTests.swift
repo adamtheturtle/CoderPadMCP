@@ -213,6 +213,11 @@ struct ToolCatalogTests {
     }
 
     @Test
+    func `create pad schema declares the title limit`() throws {
+        #expect(try property("title", of: "create_pad")["maxLength"] as? Int == maxPadTitleCharacters)
+    }
+
+    @Test
     func `create pad schema rejects conflicting seed sources`() throws {
         let schema = try inputSchema(of: "create_pad")
         let notSchema = try #require(schema["not"] as? [String: Any])

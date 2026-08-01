@@ -1253,6 +1253,10 @@ private func dryRunResult(method: String, path: String, body: [String: Any]) -> 
 }
 
 private func createPad(arguments: [String: Value]?, account: MCPAccount) async -> CallTool.Result {
+    let title = optionalString(arguments, "title")
+    if let error = padTitleValidationError(title) {
+        return errorResult(error)
+    }
     if let error = padSeedValidationError(
         questionID: strictIntArgument(arguments, "question_id"),
         contents: presentWriteString(arguments, "contents"),
@@ -1261,7 +1265,7 @@ private func createPad(arguments: [String: Value]?, account: MCPAccount) async -
     }
 
     var body: [String: Any] = [:]
-    if let title = optionalString(arguments, "title") {
+    if let title {
         body["title"] = title
     }
     if let language = optionalString(arguments, "language") {

@@ -57,6 +57,11 @@ import Testing
     #expect(filters as? [String: String] == ["author": "Ada", "type": "live"])
 }
 
+@Test func `pad title validation enforces the API limit`() {
+    #expect(padTitleValidationError(String(repeating: "a", count: 255)) == nil)
+    #expect(padTitleValidationError(String(repeating: "a", count: 256)) == "title must be at most 255 characters.")
+}
+
 @Test func `pad filenames reject traversal and remain unique`() {
     let environment = PadCodeEnvironment(id: 1, object: [
         "file_contents": [

@@ -7,6 +7,14 @@
 
 import Foundation
 
+public let maxPadTitleCharacters = 255
+
+public func padTitleValidationError(_ title: String?) -> String? {
+    guard let title, title.count > maxPadTitleCharacters else { return nil }
+
+    return "title must be at most \(maxPadTitleCharacters) characters."
+}
+
 public func padSeedValidationError(questionID: Int?, contents: String?) -> String? {
     // Server question ids are positive; zero/negative values only come from
     // malformed tool calls and would produce ambiguous seed behavior (#1611).

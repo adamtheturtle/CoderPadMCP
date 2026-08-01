@@ -41,8 +41,12 @@ public func mcpToolDescriptor(
     return descriptor
 }
 
-public func mcpStringSchema(_ description: String) -> [String: Any] {
-    ["type": "string", "description": description]
+public func mcpStringSchema(_ description: String, maxLength: Int? = nil) -> [String: Any] {
+    var schema: [String: Any] = ["type": "string", "description": description]
+    if let maxLength {
+        schema["maxLength"] = maxLength
+    }
+    return schema
 }
 
 public func mcpIntSchema(
@@ -267,7 +271,7 @@ public nonisolated(unsafe) let coderPadWriteToolDescriptors: [[String: Any]] =
             "Create a new pad (optionally seeded from a question or starting code). Returns the new pad, "
                 + "including its slug/id and URL.",
             properties: withAccount([
-                "title": mcpStringSchema("Optional pad title."),
+                "title": mcpStringSchema("Optional pad title.", maxLength: maxPadTitleCharacters),
                 "language": mcpStringSchema("Optional language, e.g. \"python3\"."),
                 "question_id": mcpIntSchema(
                     "Optional question id to seed the pad from. Mutually exclusive with contents.",
