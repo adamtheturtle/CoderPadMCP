@@ -161,7 +161,8 @@ public func parseResourceURI(_ uri: String) -> ResourceRequest? {
           components.percentEncodedQuery == nil,
           components.percentEncodedFragment == nil,
           components.percentEncodedUser == nil,
-          components.percentEncodedPassword == nil
+          components.percentEncodedPassword == nil,
+          components.port == nil
     else {
         return nil
     }

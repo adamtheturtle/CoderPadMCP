@@ -214,6 +214,12 @@ struct ResourcesTests {
         #expect(parseResourceURI("coderpad://@quota") == nil)
     }
 
+    @Test
+    func `parseResourceURI rejects ports`() {
+        #expect(parseResourceURI("coderpad://quota:443") == nil)
+        #expect(parseResourceURI("coderpad://pad:123/abc123") == nil)
+    }
+
     /// URI schemes and route literals are case-insensitive per standard; ids
     /// keep their exact case (#1581).
     @Test
