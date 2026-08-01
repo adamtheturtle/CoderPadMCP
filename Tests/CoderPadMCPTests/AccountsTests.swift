@@ -213,6 +213,15 @@ struct AccountsTests {
         }
     }
 
+    @Test
+    func `default flag must be Boolean when present`() {
+        #expect(throws: MCPConfigError.invalidDefaultFlag(account: "Acme")) {
+            try makeAccountSet(config: ["accounts": [[
+                "name": "Acme", "api_key": "a", "default": "true",
+            ]]], environment: [:])
+        }
+    }
+
     /// A name matching more than one configured account is ambiguous and
     /// resolves to nil instead of whichever was listed first (#1582).
     @Test

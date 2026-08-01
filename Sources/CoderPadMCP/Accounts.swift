@@ -158,6 +158,7 @@ public enum MCPConfigError: Error, Equatable {
     /// config reformat silently redirect unqualified tool calls to another
     /// organization (#1586).
     case noDefaultAccount
+    case invalidDefaultFlag(account: String)
     case invalidAllowWrites
     case invalidScreenRegion(account: String, region: String)
     case invalidBaseURL(account: String, baseURL: String)
@@ -408,8 +409,13 @@ public func makeAccountSet(config: [String: Any]?, environment: [String: String]
                 screenAPIKey: optionalConfigCredential(entry, field: "screen_api_key", account: name),
                 screenRegion: configScreenRegion(entry, account: name),
             ))
-            if (entry["default"] as? Bool) == true {
-                defaultNames.append(name)
+            if let rawDefault = entry["default"] {
+                guard let isDefault = rawDefault as? Bool else {
+                    throw MCPConfigError.invalidDefaultFlag(account: name)
+                }
+                if isDefault {
+                    defaultNames.append(name)
+                }
             }
         }
 

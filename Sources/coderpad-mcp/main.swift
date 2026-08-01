@@ -19,6 +19,8 @@ private func configurationFailure(_ error: Error) -> String {
             + names.joined(separator: ", ") + "); mark only one as the default.\n"
     case MCPConfigError.noDefaultAccount:
         "coderpad-mcp: a config with multiple accounts must mark one as the default.\n"
+    case let MCPConfigError.invalidDefaultFlag(account):
+        "coderpad-mcp: account \"\(account)\" has a non-Boolean \"default\" value.\n"
     case let MCPConfigError.invalidScreenRegion(account, region):
         "coderpad-mcp: account \"\(account)\" has unsupported screen_region \"\(region)\".\n"
     case let MCPConfigError.invalidBaseURL(account, baseURL):
