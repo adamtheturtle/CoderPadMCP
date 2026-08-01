@@ -220,6 +220,14 @@ struct ResourcesTests {
         #expect(parseResourceURI("coderpad://pad:123/abc123") == nil)
     }
 
+    @Test
+    func `parseResourceURI rejects duplicate path separators`() {
+        #expect(parseResourceURI("coderpad://pad//abc123") == nil)
+        #expect(parseResourceURI("coderpad://account/Acme//quota") == nil)
+        #expect(parseResourceURI("coderpad://pad/abc123//") == nil)
+        #expect(parseResourceURI("coderpad://pad/abc123/") == .pad("abc123"))
+    }
+
     /// URI schemes and route literals are case-insensitive per standard; ids
     /// keep their exact case (#1581).
     @Test

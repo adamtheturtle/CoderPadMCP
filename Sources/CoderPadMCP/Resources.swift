@@ -176,7 +176,19 @@ public func parseResourceURI(_ uri: String) -> ResourceRequest? {
     if let host = components.percentEncodedHost, !host.isEmpty {
         segments.append(host)
     }
-    segments += components.percentEncodedPath.split(separator: "/").map(String.init)
+    let path = components.percentEncodedPath
+    if !path.isEmpty {
+        guard path.hasPrefix("/") else { return nil }
+
+        var pathSegments = path.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+        pathSegments.removeFirst() // the authority/path separator
+        if pathSegments.last == "" {
+            pathSegments.removeLast() // one documented trailing slash
+        }
+        guard !pathSegments.contains("") else { return nil }
+
+        segments += pathSegments
+    }
     guard segments.count <= 5, segments.allSatisfy({ $0.utf8.count <= 1024 }) else { return nil }
 
     let decoded = segments.map { $0.removingPercentEncoding ?? $0 }
