@@ -232,8 +232,27 @@ func sanitizedFilePath(_ raw: String?) -> String? {
 }
 
 private func uniqueFilename(_ filename: String, seen: inout Set<String>) -> String {
-    guard !seen.insert(filenameConflictKey(filename)).inserted else { return filename }
+    var filename = filename
+    let components = filename.split(separator: "/").map(String.init)
+    if components.count > 1 {
+        var prefix = ""
+        let hasFileAncestor = components.dropLast().contains { component in
+            prefix = prefix.isEmpty ? component : "\(prefix)/\(component)"
+            return seen.contains(filenameConflictKey(prefix))
+        }
+        if hasFileAncestor {
+            filename = components.joined(separator: "-")
+        }
+    }
+    guard filenameIsAvailable(filename, seen: seen) else {
+        return suffixedUniqueFilename(filename, seen: &seen)
+    }
 
+    seen.insert(filenameConflictKey(filename))
+    return filename
+}
+
+private func suffixedUniqueFilename(_ filename: String, seen: inout Set<String>) -> String {
     let components = filename.split(separator: "/", omittingEmptySubsequences: false)
     let directory = components.dropLast().joined(separator: "/")
     let lastComponent = components.last.map(String.init) ?? filename
@@ -254,11 +273,27 @@ private func uniqueFilename(_ filename: String, seen: inout Set<String>) -> Stri
         let candidate = directory.isEmpty || directory == "."
             ? component
             : "\(directory)/\(component)"
-        if seen.insert(filenameConflictKey(candidate)).inserted {
+        if filenameIsAvailable(candidate, seen: seen) {
+            seen.insert(filenameConflictKey(candidate))
             return candidate
         }
         suffix += 1
     }
+}
+
+private func filenameIsAvailable(_ filename: String, seen: Set<String>) -> Bool {
+    let key = filenameConflictKey(filename)
+    guard !seen.contains(key), !seen.contains(where: { $0.hasPrefix(key + "/") }) else { return false }
+
+    let components = key.split(separator: "/")
+    var prefix = ""
+    for component in components.dropLast() {
+        prefix = prefix.isEmpty ? String(component) : "\(prefix)/\(component)"
+        if seen.contains(prefix) {
+            return false
+        }
+    }
+    return true
 }
 
 /// A materialization key for the default case-insensitive macOS filesystem. Canonical

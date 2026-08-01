@@ -135,6 +135,22 @@ import Testing
     #expect(files.compactMap { $0["filename"] as? String } == ["A.swift", "a-2.swift"])
 }
 
+@Test func `pad filenames avoid file and directory conflicts`() {
+    let environment = PadCodeEnvironment(id: 1, object: [
+        "file_contents": [
+            ["path": "src", "contents": "file"],
+            ["path": "src/main.swift", "contents": "nested"],
+            ["path": "lib/main.swift", "contents": "nested first"],
+            ["path": "lib", "contents": "file second"],
+        ],
+    ])
+    let files = padCodeFiles(pad: [:], environments: [environment], maxFileChars: nil)
+
+    #expect(files.compactMap { $0["filename"] as? String } == [
+        "src", "src-main.swift", "lib/main.swift", "lib-2",
+    ])
+}
+
 @Test func `aggregate values trim whitespace and classify blanks`() {
     let records: [[String: Any]] = [
         ["owner_email": "  ada@example.com \n"],
