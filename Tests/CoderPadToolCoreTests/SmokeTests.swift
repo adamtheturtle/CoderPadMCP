@@ -109,7 +109,7 @@ import Testing
     ])
 }
 
-@Test func `HTTP error previews are bounded and redact token-shaped data`() {
+@Test func `HTTP errors expose no response body data`() {
     let secret = String(repeating: "sensitive-token-", count: 20)
     let message = sanitizedHTTPErrorMessage(
         status: 502,
@@ -117,20 +117,13 @@ import Testing
     )
 
     #expect(message.hasPrefix("HTTP 502 [body-id: "))
-    #expect(message.contains("[redacted]"))
     #expect(!message.contains(secret))
-    #expect(message.count < 300)
-}
-
-@Test func `HTTP error previews redact email addresses`() {
-    let message = sanitizedHTTPErrorMessage(
+    #expect(!message.contains("response body"))
+    #expect(!message.contains("secret123456789"))
+    #expect(!sanitizedHTTPErrorMessage(
         status: 404,
-        body: "Candidate ada.lovelace+interview@example.co.uk was not found",
-    )
-
-    #expect(message.contains("[redacted]"))
-    #expect(!message.contains("ada.lovelace"))
-    #expect(!message.contains("example.co.uk"))
+        body: "candidate ada.lovelace+interview@example.co.uk used secret123456789",
+    ).contains("ada.lovelace"))
 }
 
 @Test func `HTTP error diagnostic identifiers are stable and distinguish bodies`() {
@@ -140,5 +133,5 @@ import Testing
 
     #expect(first == repeated)
     #expect(first != second)
-    #expect(second.contains("second failure"))
+    #expect(!second.contains("second failure"))
 }
