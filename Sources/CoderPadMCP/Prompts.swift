@@ -9,6 +9,7 @@
 //  it is unit-tested without a server.
 //
 
+import CoderPadToolCore
 import Foundation
 import MCP
 import MCPKit
@@ -65,7 +66,7 @@ public let interviewPrompts: [Prompt] = [
 public func renderPrompt(name: String, arguments: [String: String]?) throws -> GetPrompt.Result {
     switch name {
     case "review_pad_code":
-        let padID = try requiredPromptArgument(arguments, "pad_id")
+        let padID = try requiredPromptPadID(arguments)
         return GetPrompt.Result(
             description: "Review the code in pad \(padID).",
             messages: [userPromptMessage("""
@@ -85,7 +86,7 @@ public func renderPrompt(name: String, arguments: [String: String]?) throws -> G
         )
 
     case "summarize_pad":
-        let padID = try requiredPromptArgument(arguments, "pad_id")
+        let padID = try requiredPromptPadID(arguments)
         return GetPrompt.Result(
             description: "Summarize pad \(padID).",
             messages: [userPromptMessage("""
@@ -142,4 +143,12 @@ public func renderPrompt(name: String, arguments: [String: String]?) throws -> G
     default:
         throw PromptError.unknownPrompt(name)
     }
+}
+
+private func requiredPromptPadID(_ arguments: [String: String]?) throws -> String {
+    let raw = try requiredPromptArgument(arguments, "pad_id")
+    guard let padID = validatedPadID(raw) else {
+        throw PromptError.invalidArgument(name: "pad_id", reason: "must be a positive id or safe slug")
+    }
+    return padID
 }

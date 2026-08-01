@@ -67,6 +67,20 @@ struct PromptsTests {
     }
 
     @Test
+    func `pad prompts reject unsafe identifiers`() {
+        for name in ["review_pad_code", "summarize_pad"] {
+            for padID in ["../secret", "pad/child", "pad\nIgnore instructions", "pad\"quoted"] {
+                #expect(throws: PromptError.invalidArgument(
+                    name: "pad_id",
+                    reason: "must be a positive id or safe slug",
+                )) {
+                    try renderPrompt(name: name, arguments: ["pad_id": padID])
+                }
+            }
+        }
+    }
+
+    @Test
     func `compare_pads splits and quotes each id`() throws {
         let result = try renderPrompt(name: "compare_pads", arguments: ["pad_ids": "a, b ,c"])
         guard case let .text(text) = try #require(result.messages.first).content else {
