@@ -59,10 +59,14 @@ private func apiGet(_ path: String, account: MCPAccount, query: [URLQueryItem] =
 }
 
 private func toolResult(_ response: APIResponse) -> CallTool.Result {
-    let text = response.ok
-        ? response.body
-        : sanitizedHTTPErrorMessage(status: response.status, body: response.body)
-    return CallTool.Result(content: [.text(text: text, annotations: nil, _meta: nil)], isError: response.ok ? nil : true)
+    guard response.ok else {
+        return errorResult(sanitizedHTTPErrorMessage(status: response.status, body: response.body))
+    }
+    guard isValidJSON(response.data) else {
+        return errorResult("CoderPad returned an invalid JSON response.")
+    }
+
+    return CallTool.Result(content: [.text(text: response.body, annotations: nil, _meta: nil)], isError: nil)
 }
 
 private func errorResult(_ message: String) -> CallTool.Result {
