@@ -647,6 +647,37 @@ struct PadCodeTests {
     }
 
     @Test
+    func `padCodePayload reports files omitted by aggregate budgets`() throws {
+        let fileContents: [[String: Any]] = (0 ... maxPadCodeFiles).map {
+            ["path": "file-\($0).txt", "contents": "x"]
+        }
+        let environment = PadCodeEnvironment(id: 7, object: ["file_contents": fileContents])
+        let payload = padCodePayload(id: "abc", pad: [:], environments: [environment], maxFileChars: nil)
+        let files = try #require(payload["files"] as? [[String: Any]])
+
+        #expect(files.count == maxPadCodeFiles)
+        #expect(payload["incomplete"] as? Bool == true)
+        #expect(payload["omitted_file_count"] as? Int == 1)
+        #expect(payload["omitted_environment_ids"] as? [Int] == [7])
+        #expect((payload["output_limit_note"] as? String)?.contains("aggregate code budget") == true)
+    }
+
+    @Test
+    func `padCodePayload bounds aggregate content bytes`() throws {
+        let fileContents: [[String: Any]] = (0 ..< 6).map {
+            ["path": "file-\($0).txt", "contents": String(repeating: "x", count: defaultMaxFileChars)]
+        }
+        let environment = PadCodeEnvironment(id: 9, object: ["file_contents": fileContents])
+        let payload = padCodePayload(id: "abc", pad: [:], environments: [environment], maxFileChars: nil)
+        let files = try #require(payload["files"] as? [[String: Any]])
+        let contentBytes = files.compactMap { $0["contents"] as? String }.reduce(0) { $0 + $1.utf8.count }
+
+        #expect(contentBytes <= maxPadCodeContentBytes)
+        #expect(payload["omitted_file_count"] as? Int == 2)
+        #expect(payload["omitted_environment_ids"] as? [Int] == [9])
+    }
+
+    @Test
     func `padCodePayload marks failed environment fetches as incomplete`() {
         let pad: [String: Any] = ["title": "T", "pad_environment_ids": [1, 2]]
         let env = PadCodeEnvironment(id: 1, object: [

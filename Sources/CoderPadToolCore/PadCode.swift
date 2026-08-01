@@ -30,6 +30,8 @@ public func jsonObject(_ data: Data) -> [String: Any]? {
 /// default so an omitted or invalid limit can never request an unbounded response
 /// (#1589). Generous for real code files.
 public let defaultMaxFileChars = 200_000
+public let maxPadCodeFiles = 100
+public let maxPadCodeContentBytes = 800_000
 
 /// Truncates a file body to a UTF-8 byte budget, appending a marker noting how much
 /// was dropped. Budgets are enforced on encoded bytes, never `String.count`: emoji or
@@ -104,6 +106,12 @@ public struct PadCodeEnvironment {
     }
 }
 
+private struct PadCodeFileAssembly {
+    let files: [[String: Any]]
+    let omittedFileCount: Int
+    let omittedEnvironmentIDs: [Int]
+}
+
 /// The numeric environment ids referenced by a pad, coercing int and integer-string
 /// forms only, keeping positive values, and preserving first-seen order while
 /// dropping duplicates. Booleans, floats, and other JSON shapes are rejected rather
@@ -139,8 +147,17 @@ private func environmentID(from value: Any) -> Int? {
 public func padCodeFiles(
     pad: [String: Any], environments: [PadCodeEnvironment], maxFileChars: Int?,
 ) -> [[String: Any]] {
+    assemblePadCodeFiles(pad: pad, environments: environments, maxFileChars: maxFileChars).files
+}
+
+private func assemblePadCodeFiles(
+    pad: [String: Any], environments: [PadCodeEnvironment], maxFileChars: Int?,
+) -> PadCodeFileAssembly {
     var files: [[String: Any]] = []
     var seenFilenames = Set<String>()
+    var remainingContentBytes = maxPadCodeContentBytes
+    var omittedFileCount = 0
+    var omittedEnvironmentIDs: [Int] = []
 
     var seenEnvironments = Set<Int>()
     for environment in environments where seenEnvironments.insert(environment.id).inserted {
@@ -149,6 +166,13 @@ public func padCodeFiles(
         let environmentLanguage = sanitizedLanguage(environment.object["language"] as? String)
         let fileContents = environment.object["file_contents"] as? [[String: Any]] ?? []
         for file in fileContents {
+            guard files.count < maxPadCodeFiles, remainingContentBytes > 64 else {
+                omittedFileCount += 1
+                if !omittedEnvironmentIDs.contains(environment.id) {
+                    omittedEnvironmentIDs.append(environment.id)
+                }
+                continue
+            }
             let language = sanitizedLanguage(file["language"] as? String) ?? environmentLanguage
             let rawContents = file["contents"]
             let contents = rawContents as? String
@@ -167,7 +191,11 @@ public func padCodeFiles(
             if isBinary {
                 entry["binary"] = true
             } else {
-                entry["contents"] = truncate(contents ?? "", to: maxFileChars)
+                let perFileLimit = maxFileChars.flatMap { $0 > 0 ? $0 : nil } ?? defaultMaxFileChars
+                let aggregateLimit = max(1, remainingContentBytes - 64)
+                let boundedContents = truncate(contents ?? "", to: min(perFileLimit, aggregateLimit))
+                entry["contents"] = boundedContents
+                remainingContentBytes = max(0, remainingContentBytes - boundedContents.utf8.count)
             }
             if let language {
                 entry["language"] = language
@@ -181,12 +209,17 @@ public func padCodeFiles(
         }
     }
 
-    if files.isEmpty, environmentIDs(in: pad).isEmpty, let contents = pad["contents"] as? String {
+    if files.isEmpty, omittedFileCount == 0,
+       environmentIDs(in: pad).isEmpty, let contents = pad["contents"] as? String
+    {
         let language = sanitizedLanguage(pad["language"] as? String)
         let filename = uniqueFilename(synthesizedFilename(language: language), seen: &seenFilenames)
         var entry: [String: Any] = [
             "filename": filename,
-            "contents": truncate(contents, to: maxFileChars),
+            "contents": truncate(contents, to: min(
+                maxFileChars.flatMap { $0 > 0 ? $0 : nil } ?? defaultMaxFileChars,
+                max(1, remainingContentBytes - 64),
+            )),
         ]
         if let language {
             entry["language"] = language
@@ -194,7 +227,11 @@ public func padCodeFiles(
         files.append(entry)
     }
 
-    return files
+    return PadCodeFileAssembly(
+        files: files,
+        omittedFileCount: omittedFileCount,
+        omittedEnvironmentIDs: omittedEnvironmentIDs,
+    )
 }
 
 private func trimmedNonEmptyValue(_ raw: String?) -> String? {
@@ -313,13 +350,21 @@ public func padCodePayload(
     id: String, pad: [String: Any], environments: [PadCodeEnvironment],
     maxFileChars: Int?, failedEnvironmentIDs: [Int] = [],
 ) -> [String: Any] {
+    let assembly = assemblePadCodeFiles(pad: pad, environments: environments, maxFileChars: maxFileChars)
     var payload: [String: Any] = [
         // Display fields are bounded and control-character-free so a malformed
         // response can't pollute MCP output or logs (#1597).
         "pad_id": sanitizedDisplayField(id, cap: 128),
         "title": sanitizedDisplayField(pad["title"] as? String ?? "", cap: 500),
-        "files": padCodeFiles(pad: pad, environments: environments, maxFileChars: maxFileChars),
+        "files": assembly.files,
     ]
+    if assembly.omittedFileCount > 0 {
+        payload["incomplete"] = true
+        payload["omitted_file_count"] = assembly.omittedFileCount
+        payload["omitted_environment_ids"] = assembly.omittedEnvironmentIDs
+        payload["output_limit_note"] = "Files were omitted after reaching the \(maxPadCodeFiles)-file or "
+            + "\(maxPadCodeContentBytes)-byte aggregate code budget."
+    }
     let fetched = Set(environments.map(\.id))
     var missing = failedEnvironmentIDs
     for referenced in environmentIDs(in: pad)
