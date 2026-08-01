@@ -154,6 +154,18 @@ import Testing
     #expect(files.first?["filename"] as? String == "main.txt")
 }
 
+@Test func `pad filenames reject Unicode format controls`() {
+    let environment = PadCodeEnvironment(id: 1, object: [
+        "file_contents": [
+            ["path": "safe\u{202E}txt.swift", "contents": "one"],
+            ["path": "safe\u{2066}txt.swift", "contents": "two"],
+        ],
+    ])
+    let files = padCodeFiles(pad: [:], environments: [environment], maxFileChars: nil)
+
+    #expect(files.compactMap { $0["filename"] as? String } == ["main.txt", "main-2.txt"])
+}
+
 @Test func `duplicate pad filenames remain within the component byte limit`() {
     let filename = String(repeating: "a", count: 251) + ".txt"
     let environment = PadCodeEnvironment(id: 1, object: [

@@ -276,7 +276,10 @@ func sanitizedFilePath(_ raw: String?) -> String? {
           !value.hasPrefix("/"),
           !value.contains("\\"),
           !value.contains(":"),
-          !value.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) })
+          !value.unicodeScalars.contains(where: { scalar in
+              let category = scalar.properties.generalCategory
+              return category == .control || category == .format
+          })
     else { return nil }
 
     let parts = value.split(separator: "/")
