@@ -204,6 +204,11 @@ private func sanitizedBodyPreview(_ body: String) -> String {
     // would compound the memory pressure.
     var text = body.prefix(4096).split(whereSeparator: \.isWhitespace).joined(separator: " ")
     text = text.replacingOccurrences(
+        of: #"[A-Z0-9._%+\-]+@[A-Z0-9.\-]+\.[A-Z]{2,}"#,
+        with: "[redacted]",
+        options: [.regularExpression, .caseInsensitive],
+    )
+    text = text.replacingOccurrences(
         of: #"[A-Za-z0-9+/_=\-]{20,}"#, with: "[redacted]", options: .regularExpression,
     )
     // `count` walks the whole string; an HTML error page can be megabytes, and only

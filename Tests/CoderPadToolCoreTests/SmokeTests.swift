@@ -122,6 +122,17 @@ import Testing
     #expect(message.count < 300)
 }
 
+@Test func `HTTP error previews redact email addresses`() {
+    let message = sanitizedHTTPErrorMessage(
+        status: 404,
+        body: "Candidate ada.lovelace+interview@example.co.uk was not found",
+    )
+
+    #expect(message.contains("[redacted]"))
+    #expect(!message.contains("ada.lovelace"))
+    #expect(!message.contains("example.co.uk"))
+}
+
 @Test func `HTTP error diagnostic identifiers are stable and distinguish bodies`() {
     let first = sanitizedHTTPErrorMessage(status: 500, body: "first failure")
     let repeated = sanitizedHTTPErrorMessage(status: 500, body: "first failure")
