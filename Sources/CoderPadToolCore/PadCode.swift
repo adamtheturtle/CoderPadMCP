@@ -110,6 +110,7 @@ private struct PadCodeFileAssembly {
     let files: [[String: Any]]
     let omittedFileCount: Int
     let omittedEnvironmentIDs: [Int]
+    let schemaErrors: [String]
 }
 
 public let maxPadCodeEnvironments = 100
@@ -166,13 +167,18 @@ private func assemblePadCodeFiles(
     var remainingContentBytes = maxPadCodeContentBytes
     var omittedFileCount = 0
     var omittedEnvironmentIDs: [Int] = []
+    var schemaErrors: [String] = []
 
     var seenEnvironments = Set<Int>()
     for environment in environments where seenEnvironments.insert(environment.id).inserted {
         // An empty/whitespace file language is absent, not a value: it must not
         // shadow a valid environment-level language (#1595).
         let environmentLanguage = sanitizedLanguage(environment.object["language"] as? String)
-        let fileContents = environment.object["file_contents"] as? [[String: Any]] ?? []
+        let rawFileContents = environment.object["file_contents"]
+        let fileContents = rawFileContents as? [[String: Any]] ?? []
+        if rawFileContents != nil, rawFileContents as? [[String: Any]] == nil {
+            schemaErrors.append("Environment \(environment.id) file_contents was not an array of file objects.")
+        }
         for file in fileContents {
             guard files.count < maxPadCodeFiles, remainingContentBytes > 64 else {
                 omittedFileCount += 1
@@ -239,6 +245,7 @@ private func assemblePadCodeFiles(
         files: files,
         omittedFileCount: omittedFileCount,
         omittedEnvironmentIDs: omittedEnvironmentIDs,
+        schemaErrors: schemaErrors,
     )
 }
 
@@ -387,6 +394,10 @@ public func padCodePayload(
         payload["omitted_environment_ids"] = assembly.omittedEnvironmentIDs
         payload["output_limit_note"] = "Files were omitted after reaching the \(maxPadCodeFiles)-file or "
             + "\(maxPadCodeContentBytes)-byte aggregate code budget."
+    }
+    if !assembly.schemaErrors.isEmpty {
+        payload["incomplete"] = true
+        payload["schema_errors"] = assembly.schemaErrors
     }
     let fetched = Set(environments.map(\.id))
     var missing = failedEnvironmentIDs

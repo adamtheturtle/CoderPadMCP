@@ -742,6 +742,18 @@ struct PadCodeTests {
     }
 
     @Test
+    func `padCodePayload reports malformed environment file contents`() throws {
+        let environment = PadCodeEnvironment(id: 7, object: ["file_contents": "not-an-array"])
+
+        let payload = padCodePayload(id: "abc", pad: [:], environments: [environment], maxFileChars: nil)
+        let errors = try #require(payload["schema_errors"] as? [String])
+
+        #expect(payload["incomplete"] as? Bool == true)
+        #expect((payload["files"] as? [[String: Any]])?.isEmpty == true)
+        #expect(errors == ["Environment 7 file_contents was not an array of file objects."])
+    }
+
+    @Test
     func `jsonObject parses objects and rejects non-objects`() {
         #expect(jsonObject(#"{"a":1}"#)?["a"] as? Int == 1)
         #expect(jsonObject("[1,2,3]") == nil)
