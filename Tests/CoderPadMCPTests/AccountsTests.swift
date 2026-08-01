@@ -279,6 +279,12 @@ struct AccountsTests {
                 ["name": "acme", "api_key": "b"],
             ]], environment: [:])
         }
+        #expect(throws: MCPConfigError.duplicateName("STRASSE")) {
+            try makeAccountSet(config: ["accounts": [
+                ["name": "straße", "api_key": "a"],
+                ["name": "STRASSE", "api_key": "b"],
+            ]], environment: [:])
+        }
     }
 
     @Test

@@ -101,7 +101,7 @@ public struct MCPAccountSet: Equatable, Sendable {
         if let identified = accounts.first(where: { $0.id == wanted }) {
             return identified
         }
-        let matches = accounts.filter { $0.name.caseInsensitiveCompare(wanted) == .orderedSame }
+        let matches = accounts.filter { accountNamesEqual($0.name, wanted) }
         guard matches.count == 1 else { return nil }
 
         return matches[0]
@@ -145,6 +145,10 @@ public struct MCPAccountSet: Equatable, Sendable {
             return entry
         }
     }
+}
+
+private func accountNamesEqual(_ lhs: String, _ rhs: String) -> Bool {
+    lhs.caseInsensitiveCompare(rhs) == .orderedSame
 }
 
 /// Why a configuration couldn't be turned into a usable account set.
@@ -378,7 +382,7 @@ public func makeAccountSet(config: [String: Any]?, environment: [String: String]
 
         var accounts: [MCPAccount] = []
         var defaultNames: [String] = []
-        var seen = Set<String>()
+        var seenNames: [String] = []
         for entry in rawAccounts {
             let fallbackName = "account-\(accounts.count + 1)"
             let name: String
@@ -398,9 +402,10 @@ public func makeAccountSet(config: [String: Any]?, environment: [String: String]
             else {
                 throw MCPConfigError.missingAPIKey(account: name)
             }
-            guard seen.insert(name.lowercased()).inserted else {
+            guard !seenNames.contains(where: { accountNamesEqual($0, name) }) else {
                 throw MCPConfigError.duplicateName(name)
             }
+            seenNames.append(name)
 
             try accounts.append(MCPAccount(
                 name: name,
