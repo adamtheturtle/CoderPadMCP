@@ -255,7 +255,7 @@ public nonisolated(unsafe) let coderPadScreenToolDescriptors: [[String: Any]] =
             "List Screen test sessions (candidate assessments), optionally filtered by campaign or "
                 + "candidate email. Offset-paginated via start/limit.",
             properties: withAccount([
-                "campaignId": mcpIntSchema("Optional. Only sessions in this campaign."),
+                "campaignId": mcpIntSchema("Optional. Only sessions in this campaign.", minimum: 1),
                 "candidateEmail": mcpStringSchema("Optional. Only sessions for this candidate email."),
                 "start": mcpIntSchema("Optional. Offset of the first session to return.", minimum: 0),
                 "limit": mcpIntSchema(

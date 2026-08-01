@@ -226,6 +226,7 @@ struct ToolCatalogTests {
         #expect(try property("page", of: "list_pads")["minimum"] as? Int == 1)
         #expect(try property("page", of: "list_questions")["minimum"] as? Int == 1)
         #expect(try property("start", of: "screen_list_tests")["minimum"] as? Int == 0)
+        #expect(try property("campaignId", of: "screen_list_tests")["minimum"] as? Int == 1)
         #expect(try property("limit", of: "screen_list_tests")["minimum"] as? Int == 1)
         #expect(try property("limit", of: "screen_list_tests")["maximum"] as? Int == 50)
         #expect(try property("question", of: "get_question")["minimum"] as? Int == 1)

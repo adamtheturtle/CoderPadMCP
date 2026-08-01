@@ -532,6 +532,9 @@ private func dispatchScreenOrWrite(
         return await toolResult(screenGet("/campaigns", account: account))
 
     case "screen_list_tests":
+        if let campaign = strictIntArgument(arguments, "campaignId"), positiveID(campaign) == nil {
+            return errorResult("campaignId must be a positive integer.")
+        }
         if let error = screenPaginationValidationError(
             start: strictIntArgument(arguments, "start"),
             limit: strictIntArgument(arguments, "limit"),
