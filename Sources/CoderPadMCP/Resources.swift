@@ -159,7 +159,9 @@ public func parseResourceURI(_ uri: String) -> ResourceRequest? {
           let components = URLComponents(string: uri),
           components.scheme?.lowercased() == resourceScheme,
           components.percentEncodedQuery == nil,
-          components.percentEncodedFragment == nil
+          components.percentEncodedFragment == nil,
+          components.percentEncodedUser == nil,
+          components.percentEncodedPassword == nil
     else {
         return nil
     }
