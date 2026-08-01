@@ -333,7 +333,7 @@ private func expandedConfigURL(_ path: String, homeDirectory: URL) -> URL {
 public func loadConfigObject(
     environment: [String: String],
     fileManager _: FileManager = .default,
-    homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
+    homeDirectory: URL = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true),
 ) throws -> [String: Any]? {
     let maximumConfigBytes = 1_048_576
     let explicitPath = trimmedNonEmpty(environment["CODERPAD_MCP_CONFIG"])
