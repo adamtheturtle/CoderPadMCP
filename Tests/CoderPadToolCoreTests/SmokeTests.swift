@@ -107,6 +107,22 @@ import Testing
     #expect(files.first?["filename"] as? String == "main.txt")
 }
 
+@Test func `pad file language metadata is bounded and control-free`() {
+    let environment = PadCodeEnvironment(id: 1, object: [
+        "language": "swift",
+        "file_contents": [
+            ["path": "first.swift", "language": "bad\nvalue", "contents": "one"],
+            ["path": "second.swift", "language": String(repeating: "x", count: 101), "contents": "two"],
+            ["path": "third.swift", "language": "ruby", "contents": "three"],
+        ],
+    ])
+    let files = padCodeFiles(pad: [:], environments: [environment], maxFileChars: nil)
+
+    #expect(files[0]["language"] as? String == "swift")
+    #expect(files[1]["language"] as? String == "swift")
+    #expect(files[2]["language"] as? String == "ruby")
+}
+
 @Test func `aggregate values trim whitespace and classify blanks`() {
     let records: [[String: Any]] = [
         ["owner_email": "  ada@example.com \n"],

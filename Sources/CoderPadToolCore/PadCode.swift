@@ -146,10 +146,10 @@ public func padCodeFiles(
     for environment in environments where seenEnvironments.insert(environment.id).inserted {
         // An empty/whitespace file language is absent, not a value: it must not
         // shadow a valid environment-level language (#1595).
-        let environmentLanguage = trimmedNonEmptyValue(environment.object["language"] as? String)
+        let environmentLanguage = sanitizedLanguage(environment.object["language"] as? String)
         let fileContents = environment.object["file_contents"] as? [[String: Any]] ?? []
         for file in fileContents {
-            let language = trimmedNonEmptyValue(file["language"] as? String) ?? environmentLanguage
+            let language = sanitizedLanguage(file["language"] as? String) ?? environmentLanguage
             let rawContents = file["contents"]
             let contents = rawContents as? String
             let isBinary = file["binary"] as? Bool == true
@@ -182,7 +182,7 @@ public func padCodeFiles(
     }
 
     if files.isEmpty, environmentIDs(in: pad).isEmpty, let contents = pad["contents"] as? String {
-        let language = trimmedNonEmptyValue(pad["language"] as? String)
+        let language = sanitizedLanguage(pad["language"] as? String)
         let filename = uniqueFilename(synthesizedFilename(language: language), seen: &seenFilenames)
         var entry: [String: Any] = [
             "filename": filename,
@@ -201,6 +201,15 @@ private func trimmedNonEmptyValue(_ raw: String?) -> String? {
     guard let value = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else { return nil }
 
     return value
+}
+
+private func sanitizedLanguage(_ raw: String?) -> String? {
+    guard let value = trimmedNonEmptyValue(raw), value.utf8.count <= 100 else { return nil }
+    let hasUnsafeScalar = value.unicodeScalars.contains { scalar in
+        let category = scalar.properties.generalCategory
+        return category == .control || category == .format
+    }
+    return hasUnsafeScalar ? nil : value
 }
 
 /// A remote file path reduced to a safe relative form: no control characters, no
