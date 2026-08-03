@@ -143,6 +143,21 @@ struct ArgumentTests {
     }
 
     @Test
+    func `paging sorts use API syntax and normalize the legacy descending spelling`() {
+        #expect(normalizedPagingSort(nil) == nil)
+        #expect(normalizedPagingSort("created_at,asc") == "created_at,asc")
+        #expect(normalizedPagingSort("created_at,desc") == "created_at,desc")
+        #expect(normalizedPagingSort("created_at") == "created_at,asc")
+        #expect(normalizedPagingSort("-created_at") == "created_at,desc")
+        #expect(pagingSortValidationError(nil) == nil)
+        #expect(pagingSortValidationError("-created_at") == nil)
+        #expect(pagingSortValidationError("created_at") == nil)
+        #expect(pagingSortValidationError("created_at,descending") != nil)
+        #expect(pagingSortValidationError("created-at,desc") != nil)
+        #expect(pagingSortValidationError("") != nil)
+    }
+
+    @Test
     func `server object identifiers reject non-positive numeric values`() {
         #expect(positiveID(nil) == nil)
         #expect(positiveID(0) == nil)
