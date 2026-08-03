@@ -43,3 +43,45 @@ public func screenPaginationValidationError(start: Int?, limit: Int?) -> String?
     }
     return nil
 }
+
+/// Converts paging sort values to CoderPad's `field,direction` syntax. The
+/// leading-minus spelling was advertised by older server versions, so retain it
+/// as a compatibility alias rather than sending it upstream where it causes a 500.
+public func normalizedPagingSort(_ value: String?) -> String? {
+    guard let value, !value.isEmpty else { return nil }
+
+    if value.first == "-" {
+        let field = String(value.dropFirst())
+        return isPagingSortField(field) ? "\(field),desc" : nil
+    }
+
+    let components = value.split(separator: ",", omittingEmptySubsequences: false)
+    if components.count == 1, isPagingSortField(value) {
+        return "\(value),asc"
+    }
+    guard components.count == 2,
+          isPagingSortField(String(components[0])),
+          components[1] == "asc" || components[1] == "desc"
+    else { return nil }
+
+    return value
+}
+
+/// Returns a client-facing error for malformed sort values before they reach the
+/// CoderPad API. An absent sort remains valid.
+public func pagingSortValidationError(_ value: String?) -> String? {
+    guard value != nil else { return nil }
+    guard normalizedPagingSort(value) != nil else {
+        return "sort must name a field, optionally followed by asc or desc, such as created_at,desc."
+    }
+    return nil
+}
+
+private func isPagingSortField(_ value: String) -> Bool {
+    !value.isEmpty && value.unicodeScalars.allSatisfy {
+        (0x61 ... 0x7A).contains($0.value)
+            || (0x41 ... 0x5A).contains($0.value)
+            || (0x30 ... 0x39).contains($0.value)
+            || $0.value == 0x5F
+    }
+}

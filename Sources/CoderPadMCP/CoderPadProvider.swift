@@ -187,7 +187,7 @@ private func pagingQuery(_ arguments: [String: Value]?) -> [URLQueryItem] {
     if let page = strictIntArgument(arguments, "page") {
         query.append(URLQueryItem(name: "page", value: String(page)))
     }
-    if let sort = stringArgument(arguments, "sort") {
+    if let sort = normalizedPagingSort(stringArgument(arguments, "sort")) {
         query.append(URLQueryItem(name: "sort", value: sort))
     }
     return query
@@ -990,12 +990,18 @@ private func listPads(arguments: [String: Value]?, account: MCPAccount) async ->
     if let error = pageValidationError(strictIntArgument(arguments, "page")) {
         return errorResult(error)
     }
+    if let error = pagingSortValidationError(stringArgument(arguments, "sort")) {
+        return errorResult(error)
+    }
 
     return await toolResult(apiGet("/api/pads/", account: account, query: pagingQuery(arguments)))
 }
 
 private func listPadsCompact(arguments: [String: Value]?, account: MCPAccount) async -> CallTool.Result {
     if let error = pageValidationError(strictIntArgument(arguments, "page")) {
+        return errorResult(error)
+    }
+    if let error = pagingSortValidationError(stringArgument(arguments, "sort")) {
         return errorResult(error)
     }
 
@@ -1243,12 +1249,18 @@ private func listQuestions(arguments: [String: Value]?, account: MCPAccount) asy
     if let error = pageValidationError(strictIntArgument(arguments, "page")) {
         return errorResult(error)
     }
+    if let error = pagingSortValidationError(stringArgument(arguments, "sort")) {
+        return errorResult(error)
+    }
 
     return await toolResult(apiGet("/api/questions/", account: account, query: pagingQuery(arguments)))
 }
 
 private func listQuestionsCompact(arguments: [String: Value]?, account: MCPAccount) async -> CallTool.Result {
     if let error = pageValidationError(strictIntArgument(arguments, "page")) {
+        return errorResult(error)
+    }
+    if let error = pagingSortValidationError(stringArgument(arguments, "sort")) {
         return errorResult(error)
     }
 

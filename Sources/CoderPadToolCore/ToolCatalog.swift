@@ -125,7 +125,7 @@ private nonisolated(unsafe) let questionFilterProperties: [String: [String: Any]
 private nonisolated(unsafe) let pagingProperties: [String: [String: Any]] =
     [
         "page": mcpIntSchema("1-based page number.", minimum: 1),
-        "sort": mcpStringSchema("Sort order, e.g. \"created_at\" or \"-created_at\"."),
+        "sort": mcpStringSchema("Sort order, e.g. \"created_at,asc\" or \"created_at,desc\"."),
     ]
 
 /// Standard MCP annotations for a write tool: not read-only; touches an external system
