@@ -119,7 +119,7 @@ import Testing
     #expect(ownerEmailValidationError(nil) == nil)
 }
 
-@Test func `Screen candidate emails are trimmed and validated`() {
+@Test func `screen candidate emails are trimmed and validated`() {
     #expect(normalizedScreenCandidateEmail("  ada@example.com\n") == "ada@example.com")
     #expect(normalizedScreenCandidateEmail(" \n") == nil)
     #expect(screenCandidateEmailValidationError("ada@example.com") == nil)

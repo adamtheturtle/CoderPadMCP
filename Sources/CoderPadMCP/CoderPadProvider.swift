@@ -69,10 +69,6 @@ private func toolResult(_ response: APIResponse) -> CallTool.Result {
     return CallTool.Result(content: [.text(text: response.body, annotations: nil, _meta: nil)], isError: nil)
 }
 
-private func errorResult(_ message: String) -> CallTool.Result {
-    CallTool.Result(content: [.text(text: message, annotations: nil, _meta: nil)], isError: true)
-}
-
 /// Performs an authenticated write (POST/PUT) against an account with a JSON body.
 private func apiSend(_ method: String, _ path: String, account: MCPAccount, body: [String: Any]) async -> APIResponse {
     guard let payload = try? JSONSerialization.data(withJSONObject: body) else {
@@ -163,34 +159,6 @@ private func unknownAccount(_ requested: String?, accountSet: MCPAccountSet) -> 
         )],
         isError: true,
     )
-}
-
-/// Encodes a result dictionary as pretty JSON text.
-private func jsonResult(_ object: [String: Any]) -> CallTool.Result {
-    guard let data = try? JSONSerialization.data(
-        withJSONObject: object, options: [.prettyPrinted, .sortedKeys],
-    ) else {
-        return CallTool.Result(
-            content: [.text(text: "Could not encode the result.", annotations: nil, _meta: nil)],
-            isError: true,
-        )
-    }
-
-    return CallTool.Result(
-        content: [.text(text: String(decoding: data, as: UTF8.self), annotations: nil, _meta: nil)],
-        isError: nil,
-    )
-}
-
-private func pagingQuery(_ arguments: [String: Value]?) -> [URLQueryItem] {
-    var query: [URLQueryItem] = []
-    if let page = strictIntArgument(arguments, "page") {
-        query.append(URLQueryItem(name: "page", value: String(page)))
-    }
-    if let sort = normalizedPagingSort(stringArgument(arguments, "sort")) {
-        query.append(URLQueryItem(name: "sort", value: sort))
-    }
-    return query
 }
 
 private func cachedRecords(
