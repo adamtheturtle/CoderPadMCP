@@ -26,111 +26,12 @@
 //  opted in (#502). There is no delete tool: deletion stays a human action in the app.
 //
 
-import CoderPadKit
 import Foundation
 import MCP
 
-#if canImport(FoundationNetworking)
-    import FoundationNetworking
-#endif
-
-private let screenAPIPrefix = "/assessment/api/v1.1"
-private let interviewReadResponseLimit = 8 * 1024 * 1024
-private let interviewWriteResponseLimit = 1 * 1024 * 1024
-private let screenReadResponseLimit = 8 * 1024 * 1024
 private let knownToolNames = Set(
     availableTools(screenEnabled: true, writesEnabled: true).map(\.name),
 )
-
-// MARK: - CoderPad REST
-
-/// Performs an authenticated GET against an account and returns the status and raw body.
-private func apiGet(_ path: String, account: MCPAccount, query: [URLQueryItem] = []) async -> APIResponse {
-    do {
-        let response = try await CoderPadClient(
-            apiKey: account.apiKey,
-            baseURL: account.baseURL,
-        ).rawRequest(
-            path: path,
-            query: query,
-            responseLimit: interviewReadResponseLimit,
-        )
-        return APIResponse(status: response.status, data: response.data)
-    } catch {
-        return APIResponse(status: 0, body: "Request to \(path) failed: \(error.localizedDescription)")
-    }
-}
-
-private func toolResult(_ response: APIResponse) -> CallTool.Result {
-    guard response.ok else {
-        return errorResult(sanitizedHTTPErrorMessage(status: response.status, body: response.body))
-    }
-    guard isValidJSON(response.data) else {
-        return errorResult("CoderPad returned an invalid JSON response.")
-    }
-
-    return CallTool.Result(content: [.text(text: response.body, annotations: nil, _meta: nil)], isError: nil)
-}
-
-/// Performs an authenticated write (POST/PUT) against an account with a JSON body.
-private func apiSend(_ method: String, _ path: String, account: MCPAccount, body: [String: Any]) async -> APIResponse {
-    guard let payload = try? JSONSerialization.data(withJSONObject: body) else {
-        return APIResponse(status: 0, body: "Could not encode the request body.")
-    }
-
-    do {
-        let response = try await CoderPadClient(
-            apiKey: account.apiKey,
-            baseURL: account.baseURL,
-        ).rawRequest(
-            method: method,
-            path: path,
-            body: payload,
-            responseLimit: interviewWriteResponseLimit,
-        )
-        return APIResponse(status: response.status, data: response.data)
-    } catch {
-        return APIResponse(status: 0, body: "Request to \(path) failed: \(error.localizedDescription)")
-    }
-}
-
-/// An authenticated GET against the CoderPad Screen API for an account, which uses an
-/// `API-Key` header (not Bearer) and its own host + version prefix.
-private func screenGet(_ path: String, account: MCPAccount, query: [URLQueryItem] = []) async -> APIResponse {
-    guard let key = account.screenAPIKey else {
-        return APIResponse(
-            status: 0,
-            body: "Screen is not configured for account \"\(account.name)\".",
-        )
-    }
-    guard var comps = URLComponents(
-        url: account.screenBaseURL.appending(path: screenAPIPrefix + path), resolvingAgainstBaseURL: false,
-    ) else {
-        return APIResponse(status: 0, body: "Could not build a URL for \(path).")
-    }
-
-    let items = query.filter { ($0.value ?? "").isEmpty == false }
-    if !items.isEmpty {
-        comps.queryItems = items
-    }
-    guard let url = comps.url else {
-        return APIResponse(status: 0, body: "Could not build a URL for \(path).")
-    }
-
-    var request = URLRequest(url: url)
-    request.setValue(key, forHTTPHeaderField: "API-Key")
-    request.setValue("application/json", forHTTPHeaderField: "Accept")
-    do {
-        let (data, response) = try await boundedResponseData(
-            for: request,
-            limit: screenReadResponseLimit,
-        )
-        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        return APIResponse(status: status, data: data)
-    } catch {
-        return APIResponse(status: 0, body: "Request to \(path) failed: \(error.localizedDescription)")
-    }
-}
 
 // MARK: - Result helpers
 
@@ -186,8 +87,8 @@ private func getRecord(
     kind: CoderPadMCPRecordKind,
     account: MCPAccount,
     cache: CoderPadMCPCache?,
-) async -> CallTool.Result {
-    let response = await apiGet(path, account: account)
+) async throws -> CallTool.Result {
+    let response = try await apiGet(path, account: account)
     if response.ok || response.status != 0 {
         return toolResult(response)
     }
@@ -245,15 +146,31 @@ public struct CoderPadProvider: MCPToolProvider {
     public let accountSet: MCPAccountSet
     private let cache: CoderPadMCPCache?
     private let activity: (@Sendable (CoderPadMCPActivity) -> Void)?
+    private let interviewRequest: InterviewRequest
 
     public init(
         accountSet: MCPAccountSet,
         cache: CoderPadMCPCache? = nil,
         activity: (@Sendable (CoderPadMCPActivity) -> Void)? = nil,
     ) {
+        self.init(
+            accountSet: accountSet,
+            cache: cache,
+            activity: activity,
+            interviewRequest: liveInterviewRequest,
+        )
+    }
+
+    init(
+        accountSet: MCPAccountSet,
+        cache: CoderPadMCPCache? = nil,
+        activity: (@Sendable (CoderPadMCPActivity) -> Void)? = nil,
+        interviewRequest: @escaping InterviewRequest,
+    ) {
         self.accountSet = accountSet
         self.cache = cache
         self.activity = activity
+        self.interviewRequest = interviewRequest
     }
 
     public func tools() async -> [Tool] {
@@ -263,7 +180,7 @@ public struct CoderPadProvider: MCPToolProvider {
         )
     }
 
-    public func callTool(_ name: String, arguments: [String: Value]?) async -> CallTool.Result {
+    public func callTool(_ name: String, arguments: [String: Value]?) async throws -> CallTool.Result {
         guard knownToolNames.contains(name) else {
             let result = errorResult("Unknown tool: \(name)")
             record(name: name, account: nil, result: result)
@@ -297,13 +214,16 @@ public struct CoderPadProvider: MCPToolProvider {
             return result
         }
 
-        let result = await dispatch(
-            name: name,
-            arguments: arguments,
-            account: account,
-            writesEnabled: accountSet.allowsWrites(to: account),
-            cache: cache,
-        )
+        try Task.checkCancellation()
+        let result = try await ProviderRequestContext.$interviewRequest.withValue(interviewRequest) {
+            try await dispatch(
+                name: name,
+                arguments: arguments,
+                account: account,
+                writesEnabled: accountSet.allowsWrites(to: account),
+                cache: cache,
+            )
+        }
         record(name: name, account: account, result: result)
         return result
     }
@@ -363,7 +283,9 @@ public struct CoderPadProvider: MCPToolProvider {
         case let .unknownAccount(name):
             throw MCPError.invalidParams("No account matches resource selector \"\(name)\".")
         }
-        return try await readCoderPadResource(request.unqualified, uri: uri, account: account)
+        return try await ProviderRequestContext.$interviewRequest.withValue(interviewRequest) {
+            try await readCoderPadResource(request.unqualified, uri: uri, account: account)
+        }
     }
 }
 
@@ -380,7 +302,7 @@ private func dispatch(
     account: MCPAccount,
     writesEnabled: Bool,
     cache: CoderPadMCPCache?,
-) async -> CallTool.Result {
+) async throws -> CallTool.Result {
     let integerArguments = [
         "page", "max_file_chars", "question", "start", "limit", "test", "campaignId", "question_id",
     ]
@@ -390,17 +312,17 @@ private func dispatch(
 
     switch name {
     case "whoami":
-        return await whoami(account: account, writesEnabled: writesEnabled)
+        return try await whoami(account: account, writesEnabled: writesEnabled)
 
     case "list_pads":
-        return await listPads(arguments: arguments, account: account)
+        return try await listPads(arguments: arguments, account: account)
 
     case "get_pad":
         guard let pad = validatedPadID(stringArgument(arguments, "pad")) else {
             return errorResult("pad must be a positive id or a non-empty slug.")
         }
 
-        return await getRecord(
+        return try await getRecord(
             path: "/api/pads/\(pad)",
             idKey: "id",
             id: pad,
@@ -414,17 +336,21 @@ private func dispatch(
             return errorResult("pad must be a positive id or a non-empty slug.")
         }
 
-        return await getPadCode(id: pad, maxFileChars: strictIntArgument(arguments, "max_file_chars"), account: account)
+        return try await getPadCode(
+            id: pad,
+            maxFileChars: strictIntArgument(arguments, "max_file_chars"),
+            account: account,
+        )
 
     case "count_pads":
-        return await countPads(arguments: arguments, account: account, cache: cache)
+        return try await countPads(arguments: arguments, account: account, cache: cache)
 
     case "aggregate_pads":
         guard let groupBy = stringArgument(arguments, "group_by"), !groupBy.isEmpty else {
             return missingArgument("group_by")
         }
 
-        return await aggregatePadsTool(
+        return try await aggregatePadsTool(
             groupBy: groupBy,
             arguments: arguments,
             account: account,
@@ -432,17 +358,17 @@ private func dispatch(
         )
 
     case "list_pads_compact":
-        return await listPadsCompact(arguments: arguments, account: account)
+        return try await listPadsCompact(arguments: arguments, account: account)
 
     case "list_questions":
-        return await listQuestions(arguments: arguments, account: account)
+        return try await listQuestions(arguments: arguments, account: account)
 
     case "get_question":
         guard let question = positiveID(strictIntArgument(arguments, "question")) else {
             return errorResult("question must be a positive integer.")
         }
 
-        return await getRecord(
+        return try await getRecord(
             path: "/api/questions/\(question)",
             idKey: "id",
             id: String(question),
@@ -452,14 +378,14 @@ private func dispatch(
         )
 
     case "count_questions":
-        return await countQuestions(arguments: arguments, account: account, cache: cache)
+        return try await countQuestions(arguments: arguments, account: account, cache: cache)
 
     case "aggregate_questions":
         guard let groupBy = stringArgument(arguments, "group_by"), !groupBy.isEmpty else {
             return missingArgument("group_by")
         }
 
-        return await aggregateQuestionsTool(
+        return try await aggregateQuestionsTool(
             groupBy: groupBy,
             arguments: arguments,
             account: account,
@@ -467,16 +393,16 @@ private func dispatch(
         )
 
     case "list_questions_compact":
-        return await listQuestionsCompact(arguments: arguments, account: account)
+        return try await listQuestionsCompact(arguments: arguments, account: account)
 
     case "get_quota":
-        return await toolResult(apiGet("/api/quota", account: account))
+        return try await toolResult(apiGet("/api/quota", account: account))
 
     case "get_organization":
-        return await toolResult(apiGet("/api/organization", account: account))
+        return try await toolResult(apiGet("/api/organization", account: account))
 
     default:
-        return await dispatchScreenOrWrite(
+        return try await dispatchScreenOrWrite(
             name: name,
             arguments: arguments,
             account: account,
@@ -492,7 +418,7 @@ private func dispatchScreenOrWrite(
     arguments: [String: Value]?,
     account: MCPAccount,
     cache: CoderPadMCPCache?,
-) async -> CallTool.Result {
+) async throws -> CallTool.Result {
     let budgetedWriteFields = [
         "create_pad": ["title", "language", "contents", "owner_email", "notes", "team_id"],
         "update_pad": ["title", "notes", "owner_email", "language"],
@@ -507,7 +433,7 @@ private func dispatchScreenOrWrite(
 
     switch name {
     case "screen_list_campaigns":
-        return await toolResult(screenGet("/campaigns", account: account))
+        return try await toolResult(screenGet("/campaigns", account: account))
 
     case "screen_list_tests":
         if let campaign = strictIntArgument(arguments, "campaignId"), positiveID(campaign) == nil {
@@ -524,7 +450,7 @@ private func dispatchScreenOrWrite(
             return errorResult(error)
         }
 
-        return await toolResult(screenGet(
+        return try await toolResult(screenGet(
             "/tests",
             account: account,
             query: screenTestQuery(arguments, candidateEmail: normalizedScreenCandidateEmail(rawCandidateEmail)),
@@ -535,10 +461,10 @@ private func dispatchScreenOrWrite(
             return errorResult("test must be a positive integer.")
         }
 
-        return await toolResult(screenGet("/tests/\(test)", account: account))
+        return try await toolResult(screenGet("/tests/\(test)", account: account))
 
     case "create_pad":
-        let result = await createPad(arguments: arguments, account: account)
+        let result = try await createPad(arguments: arguments, account: account)
         return await invalidating(result, kind: .pads, account: account, cache: cache)
 
     case "update_pad":
@@ -546,13 +472,13 @@ private func dispatchScreenOrWrite(
             return errorResult("pad must be a positive id or a non-empty slug.")
         }
 
-        let result = await updatePad(id: pad, arguments: arguments, account: account)
+        let result = try await updatePad(id: pad, arguments: arguments, account: account)
         return await invalidating(result, kind: .pads, account: account, cache: cache)
 
     case "create_question":
         guard let title = optionalString(arguments, "title") else { return missingArgument("title") }
 
-        let result = await createQuestion(title: title, arguments: arguments, account: account)
+        let result = try await createQuestion(title: title, arguments: arguments, account: account)
         return await invalidating(result, kind: .questions, account: account, cache: cache)
 
     case "update_question":
@@ -560,7 +486,7 @@ private func dispatchScreenOrWrite(
             return errorResult("question must be a positive integer.")
         }
 
-        let result = await updateQuestion(id: question, arguments: arguments, account: account)
+        let result = try await updateQuestion(id: question, arguments: arguments, account: account)
         return await invalidating(result, kind: .questions, account: account, cache: cache)
 
     default:
@@ -593,7 +519,7 @@ private func screenTestQuery(_ arguments: [String: Value]?, candidateEmail: Stri
 /// Reports which account/org this server acts as, without the API key: the account
 /// name, the org name (fetched from `/api/organization`), the base URL, and whether
 /// Screen and writes are enabled.
-private func whoami(account: MCPAccount, writesEnabled: Bool) async -> CallTool.Result {
+private func whoami(account: MCPAccount, writesEnabled: Bool) async throws -> CallTool.Result {
     var info: [String: Any] = [
         "account": account.name,
         "base_url": account.baseURL.absoluteString,
@@ -601,7 +527,7 @@ private func whoami(account: MCPAccount, writesEnabled: Bool) async -> CallTool.
         "writes_enabled": writesEnabled,
     ]
 
-    let org = await apiGet("/api/organization", account: account)
+    let org = try await apiGet("/api/organization", account: account)
     if org.ok, let object = jsonObject(org.data), let name = object["organization_name"] as? String {
         info["organization_name"] = name
     } else {
@@ -621,7 +547,7 @@ private func padCodeJSON(id: String, maxFileChars: Int?, account: MCPAccount) as
         throw MCPError.invalidParams(error)
     }
 
-    let padResponse = await apiGet("/api/pads/\(id)", account: account)
+    let padResponse = try await apiGet("/api/pads/\(id)", account: account)
     guard padResponse.ok else {
         throw MCPError.internalError(
             sanitizedHTTPErrorMessage(status: padResponse.status, body: padResponse.body),
@@ -641,14 +567,14 @@ private func padCodeJSON(id: String, maxFileChars: Int?, account: MCPAccount) as
     var bodies: [Int: Data] = [:]
     for batchStart in stride(from: 0, to: ids.count, by: maxConcurrentPadCodeEnvironmentRequests) {
         let offsets = batchStart ..< min(batchStart + maxConcurrentPadCodeEnvironmentRequests, ids.count)
-        await withTaskGroup(of: (offset: Int, body: Data?).self) { group in
+        try await withThrowingTaskGroup(of: (offset: Int, body: Data?).self) { group in
             for offset in offsets {
                 group.addTask {
-                    let response = await apiGet("/api/pad_environments/\(ids[offset])", account: account)
+                    let response = try await apiGet("/api/pad_environments/\(ids[offset])", account: account)
                     return (offset, response.ok ? response.data : nil)
                 }
             }
-            for await result in group {
+            for try await result in group {
                 bodies[result.offset] = result.body
             }
         }
@@ -678,10 +604,12 @@ private func padCodeJSON(id: String, maxFileChars: Int?, account: MCPAccount) as
     return String(decoding: data, as: UTF8.self)
 }
 
-private func getPadCode(id: String, maxFileChars: Int?, account: MCPAccount) async -> CallTool.Result {
+private func getPadCode(id: String, maxFileChars: Int?, account: MCPAccount) async throws -> CallTool.Result {
     do {
         let json = try await padCodeJSON(id: id, maxFileChars: maxFileChars, account: account)
         return CallTool.Result(content: [.text(text: json, annotations: nil, _meta: nil)], isError: nil)
+    } catch is CancellationError {
+        throw CancellationError()
     } catch {
         return CallTool.Result(
             content: [.text(text: error.localizedDescription, annotations: nil, _meta: nil)],
@@ -700,7 +628,7 @@ private func readCoderPadResource(
     account: MCPAccount,
 ) async throws -> ReadResource.Result {
     func jsonResource(_ path: String) async throws -> ReadResource.Result {
-        let response = await apiGet(path, account: account)
+        let response = try await apiGet(path, account: account)
         guard response.ok else {
             throw MCPError.internalError(
                 sanitizedHTTPErrorMessage(
@@ -773,7 +701,7 @@ private func fetchAllPads(
     account: MCPAccount,
     cache: CoderPadMCPCache?,
     consume: ([[String: Any]]) -> Void,
-) async -> PadPageScan {
+) async throws -> PadPageScan {
     if let pads = cachedRecords(.pads, account: account, requireFresh: true, cache: cache) {
         consume(pads)
         return PadPageScan(scanned: pads.count, totalReported: pads.count)
@@ -788,7 +716,7 @@ private func fetchAllPads(
         if let page {
             query.append(URLQueryItem(name: "page", value: page))
         }
-        let response = await apiGet("/api/pads/", account: account, query: query)
+        let response = try await apiGet("/api/pads/", account: account, query: query)
         guard response.ok, let object = jsonObject(response.data) else {
             scan.error = response
             return scan
@@ -832,7 +760,7 @@ private func countPads(
     arguments: [String: Value]?,
     account: MCPAccount,
     cache: CoderPadMCPCache?,
-) async -> CallTool.Result {
+) async throws -> CallTool.Result {
     let owner = stringArgument(arguments, "owner")
     let state = stringArgument(arguments, "state")
     let language = stringArgument(arguments, "language")
@@ -846,7 +774,7 @@ private func countPads(
     // values for every row (#2453).
     let matcher = PadMatcher(owner: owner, state: state, language: language)
     var matched = 0
-    let scan = await fetchAllPads(account: account, cache: cache) { pads in
+    let scan = try await fetchAllPads(account: account, cache: cache) { pads in
         for pad in pads where matcher.matches(pad) && withinDateRange(pad, after: after, before: before) {
             matched += 1
         }
@@ -890,7 +818,7 @@ private func aggregatePadsTool(
     arguments: [String: Value]?,
     account: MCPAccount,
     cache: CoderPadMCPCache?,
-) async -> CallTool.Result {
+) async throws -> CallTool.Result {
     guard let field = aggregateField(for: groupBy) else {
         return CallTool.Result(
             content: [.text(
@@ -915,7 +843,7 @@ private func aggregatePadsTool(
     let matcher = PadMatcher(owner: owner, state: state, language: language)
     var matched = 0
     var counts: [String: Int] = [:]
-    let scan = await fetchAllPads(account: account, cache: cache) { pads in
+    let scan = try await fetchAllPads(account: account, cache: cache) { pads in
         let page = pads.filter {
             matcher.matches($0)
                 && withinDateRange($0, after: after, before: before)
@@ -964,7 +892,7 @@ private func aggregatePadsTool(
     return jsonResult(result)
 }
 
-private func listPads(arguments: [String: Value]?, account: MCPAccount) async -> CallTool.Result {
+private func listPads(arguments: [String: Value]?, account: MCPAccount) async throws -> CallTool.Result {
     if let error = pageValidationError(strictIntArgument(arguments, "page")) {
         return errorResult(error)
     }
@@ -972,10 +900,10 @@ private func listPads(arguments: [String: Value]?, account: MCPAccount) async ->
         return errorResult(error)
     }
 
-    return await toolResult(apiGet("/api/pads/", account: account, query: pagingQuery(arguments)))
+    return try await toolResult(apiGet("/api/pads/", account: account, query: pagingQuery(arguments)))
 }
 
-private func listPadsCompact(arguments: [String: Value]?, account: MCPAccount) async -> CallTool.Result {
+private func listPadsCompact(arguments: [String: Value]?, account: MCPAccount) async throws -> CallTool.Result {
     if let error = pageValidationError(strictIntArgument(arguments, "page")) {
         return errorResult(error)
     }
@@ -983,7 +911,7 @@ private func listPadsCompact(arguments: [String: Value]?, account: MCPAccount) a
         return errorResult(error)
     }
 
-    let response = await apiGet("/api/pads/", account: account, query: pagingQuery(arguments))
+    let response = try await apiGet("/api/pads/", account: account, query: pagingQuery(arguments))
     guard response.ok, let object = jsonObject(response.data) else { return toolResult(response) }
     guard let pads = object["pads"] as? [[String: Any]] else {
         return errorResult(invalidListResponseMessage("/api/pads/", expecting: "pads", body: response.body))
@@ -1026,7 +954,7 @@ private func fetchAllQuestions(
     account: MCPAccount,
     cache: CoderPadMCPCache?,
     consume: ([[String: Any]]) -> Void,
-) async -> QuestionPageScan {
+) async throws -> QuestionPageScan {
     if let questions = cachedRecords(.questions, account: account, requireFresh: true, cache: cache) {
         consume(questions)
         return QuestionPageScan(scanned: questions.count, totalReported: questions.count)
@@ -1041,7 +969,7 @@ private func fetchAllQuestions(
         if let page {
             query.append(URLQueryItem(name: "page", value: page))
         }
-        let response = await apiGet("/api/questions/", account: account, query: query)
+        let response = try await apiGet("/api/questions/", account: account, query: query)
         guard response.ok, let object = jsonObject(response.data) else {
             scan.error = response
             return scan
@@ -1087,7 +1015,7 @@ private func countQuestions(
     arguments: [String: Value]?,
     account: MCPAccount,
     cache: CoderPadMCPCache?,
-) async -> CallTool.Result {
+) async throws -> CallTool.Result {
     let owner = stringArgument(arguments, "owner")
     let author = stringArgument(arguments, "author")
     let language = stringArgument(arguments, "language")
@@ -1102,7 +1030,7 @@ private func countQuestions(
     // values for every row (#2452).
     let matcher = QuestionMatcher(owner: owner, author: author, language: language, type: type)
     var matched = 0
-    let scan = await fetchAllQuestions(account: account, cache: cache) { questions in
+    let scan = try await fetchAllQuestions(account: account, cache: cache) { questions in
         for question in questions
             where matcher.matches(question) && withinDateRange(question, after: after, before: before)
         {
@@ -1148,7 +1076,7 @@ private func aggregateQuestionsTool(
     arguments: [String: Value]?,
     account: MCPAccount,
     cache: CoderPadMCPCache?,
-) async -> CallTool.Result {
+) async throws -> CallTool.Result {
     guard let field = questionAggregateField(for: groupBy) else {
         return CallTool.Result(
             content: [.text(
@@ -1174,7 +1102,7 @@ private func aggregateQuestionsTool(
     let matcher = QuestionMatcher(owner: owner, author: author, language: language, type: type)
     var matched = 0
     var counts: [String: Int] = [:]
-    let scan = await fetchAllQuestions(account: account, cache: cache) { questions in
+    let scan = try await fetchAllQuestions(account: account, cache: cache) { questions in
         let page = questions.filter {
             matcher.matches($0)
                 && withinDateRange($0, after: after, before: before)
@@ -1223,7 +1151,7 @@ private func aggregateQuestionsTool(
     return jsonResult(result)
 }
 
-private func listQuestions(arguments: [String: Value]?, account: MCPAccount) async -> CallTool.Result {
+private func listQuestions(arguments: [String: Value]?, account: MCPAccount) async throws -> CallTool.Result {
     if let error = pageValidationError(strictIntArgument(arguments, "page")) {
         return errorResult(error)
     }
@@ -1231,10 +1159,10 @@ private func listQuestions(arguments: [String: Value]?, account: MCPAccount) asy
         return errorResult(error)
     }
 
-    return await toolResult(apiGet("/api/questions/", account: account, query: pagingQuery(arguments)))
+    return try await toolResult(apiGet("/api/questions/", account: account, query: pagingQuery(arguments)))
 }
 
-private func listQuestionsCompact(arguments: [String: Value]?, account: MCPAccount) async -> CallTool.Result {
+private func listQuestionsCompact(arguments: [String: Value]?, account: MCPAccount) async throws -> CallTool.Result {
     if let error = pageValidationError(strictIntArgument(arguments, "page")) {
         return errorResult(error)
     }
@@ -1242,7 +1170,7 @@ private func listQuestionsCompact(arguments: [String: Value]?, account: MCPAccou
         return errorResult(error)
     }
 
-    let response = await apiGet("/api/questions/", account: account, query: pagingQuery(arguments))
+    let response = try await apiGet("/api/questions/", account: account, query: pagingQuery(arguments))
     guard response.ok, let object = jsonObject(response.data) else { return toolResult(response) }
     guard let questions = object["questions"] as? [[String: Any]] else {
         return errorResult(invalidListResponseMessage("/api/questions/", expecting: "questions", body: response.body))
@@ -1267,7 +1195,7 @@ private func dryRunResult(method: String, path: String, body: [String: Any]) -> 
     jsonResult(["dry_run": true, "changed": false, "method": method, "path": path, "body": body])
 }
 
-private func createPad(arguments: [String: Value]?, account: MCPAccount) async -> CallTool.Result {
+private func createPad(arguments: [String: Value]?, account: MCPAccount) async throws -> CallTool.Result {
     let title = optionalString(arguments, "title")
     if let error = padTitleValidationError(title) {
         return errorResult(error)
@@ -1315,10 +1243,10 @@ private func createPad(arguments: [String: Value]?, account: MCPAccount) async -
     if strictDryRunArgument(arguments) == .value(true) {
         return dryRunResult(method: "POST", path: "/api/pads/", body: body)
     }
-    return await toolResult(apiSend("POST", "/api/pads/", account: account, body: body))
+    return try await toolResult(apiSend("POST", "/api/pads/", account: account, body: body))
 }
 
-private func updatePad(id: String, arguments: [String: Value]?, account: MCPAccount) async -> CallTool.Result {
+private func updatePad(id: String, arguments: [String: Value]?, account: MCPAccount) async throws -> CallTool.Result {
     let title = presentWriteString(arguments, "title")
     if let error = padUpdateTitleValidationError(title) {
         return errorResult(error)
@@ -1343,10 +1271,14 @@ private func updatePad(id: String, arguments: [String: Value]?, account: MCPAcco
     if strictDryRunArgument(arguments) == .value(true) {
         return dryRunResult(method: "PUT", path: "/api/pads/\(id)", body: body)
     }
-    return await toolResult(apiSend("PUT", "/api/pads/\(id)", account: account, body: body))
+    return try await toolResult(apiSend("PUT", "/api/pads/\(id)", account: account, body: body))
 }
 
-private func createQuestion(title: String, arguments: [String: Value]?, account: MCPAccount) async -> CallTool.Result {
+private func createQuestion(
+    title: String,
+    arguments: [String: Value]?,
+    account: MCPAccount,
+) async throws -> CallTool.Result {
     var question: [String: Any] = ["title": title]
     if let language = optionalString(arguments, "language") {
         question["language"] = language
@@ -1365,10 +1297,14 @@ private func createQuestion(title: String, arguments: [String: Value]?, account:
     if strictDryRunArgument(arguments) == .value(true) {
         return dryRunResult(method: "POST", path: "/api/questions/", body: body)
     }
-    return await toolResult(apiSend("POST", "/api/questions/", account: account, body: body))
+    return try await toolResult(apiSend("POST", "/api/questions/", account: account, body: body))
 }
 
-private func updateQuestion(id: Int, arguments: [String: Value]?, account: MCPAccount) async -> CallTool.Result {
+private func updateQuestion(
+    id: Int,
+    arguments: [String: Value]?,
+    account: MCPAccount,
+) async throws -> CallTool.Result {
     var question: [String: Any] = [:]
     if let title = presentWriteString(arguments, "title") {
         question["title"] = title
@@ -1396,5 +1332,5 @@ private func updateQuestion(id: Int, arguments: [String: Value]?, account: MCPAc
     if strictDryRunArgument(arguments) == .value(true) {
         return dryRunResult(method: "PUT", path: "/api/questions/\(id)", body: body)
     }
-    return await toolResult(apiSend("PUT", "/api/questions/\(id)", account: account, body: body))
+    return try await toolResult(apiSend("PUT", "/api/questions/\(id)", account: account, body: body))
 }

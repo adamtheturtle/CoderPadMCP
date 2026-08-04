@@ -1,16 +1,49 @@
 @testable import CoderPadMCP
+import Foundation
 import MCP
 import Testing
+
+private actor BlockingRequestProbe {
+    private struct Timeout: Error {}
+
+    private var startedCount = 0
+    private var cancelledCount = 0
+
+    func block() async throws -> APIResponse {
+        startedCount += 1
+        do {
+            try await Task.sleep(for: .seconds(60))
+        } catch is CancellationError {
+            cancelledCount += 1
+            throw CancellationError()
+        }
+        return APIResponse(status: 200, body: "{}")
+    }
+
+    func waitUntilStarted(_ count: Int) async throws {
+        for _ in 0 ..< 200 {
+            if startedCount >= count {
+                return
+            }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        throw Timeout()
+    }
+
+    func cancellations() -> Int {
+        cancelledCount
+    }
+}
 
 @Suite("Provider dispatch")
 struct ProviderDispatchTests {
     @Test
-    func `unknown tools are rejected before account resolution`() async {
+    func `unknown tools are rejected before account resolution`() async throws {
         let provider = CoderPadProvider(
             accountSet: MCPAccountSet(accounts: [], defaultName: "", allowWrites: false),
         )
 
-        let result = await provider.callTool("does_not_exist", arguments: nil)
+        let result = try await provider.callTool("does_not_exist", arguments: nil)
 
         #expect(result.isError == true)
         guard case let .text(text, _, _)? = result.content.first else {
@@ -19,5 +52,67 @@ struct ProviderDispatchTests {
         }
 
         #expect(text == "Unknown tool: does_not_exist")
+    }
+
+    @Test
+    func `cancelling a paginated scan stops the next page request`() async throws {
+        let probe = BlockingRequestProbe()
+        let provider = try provider { _, path, _, query, _, _ in
+            if path == "/api/pads/", query.contains(where: { $0.name == "page" }) {
+                return try await probe.block()
+            }
+            return APIResponse(
+                status: 200,
+                body: #"{"pads":[{"id":"first"}],"next_page":"next","total":1}"#,
+            )
+        }
+
+        let task = Task { try await provider.callTool("count_pads", arguments: nil) }
+        try await probe.waitUntilStarted(1)
+        task.cancel()
+
+        await #expect(throws: CancellationError.self) {
+            try await task.value
+        }
+        #expect(await probe.cancellations() == 1)
+    }
+
+    @Test
+    func `cancelling get pad code stops its environment fanout`() async throws {
+        let probe = BlockingRequestProbe()
+        let provider = try provider { _, path, _, _, _, _ in
+            if path == "/api/pads/abc" {
+                return APIResponse(status: 200, body: #"{"pad_environment_ids":[1,2]}"#)
+            }
+            if path.hasPrefix("/api/pad_environments/") {
+                return try await probe.block()
+            }
+            return APIResponse(status: 404, body: "{}")
+        }
+
+        let task = Task {
+            try await provider.callTool("get_pad_code", arguments: ["pad": .string("abc")])
+        }
+        try await probe.waitUntilStarted(1)
+        task.cancel()
+
+        await #expect(throws: CancellationError.self) {
+            try await task.value
+        }
+        #expect(await probe.cancellations() == 1)
+    }
+
+    private func provider(request: @escaping InterviewRequest) throws -> CoderPadProvider {
+        let account = try MCPAccount(
+            name: "Acme",
+            apiKey: "secret",
+            baseURL: #require(URL(string: "https://app.coderpad.io")),
+            screenAPIKey: nil,
+            screenRegion: "us",
+        )
+        return CoderPadProvider(
+            accountSet: MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: false),
+            interviewRequest: request,
+        )
     }
 }
