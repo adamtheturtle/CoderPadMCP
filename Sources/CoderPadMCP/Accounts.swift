@@ -207,6 +207,7 @@ public enum MCPConfigLoadError: Error, Equatable, LocalizedError {
     case readFailed(path: String)
     case configTooLarge(path: String, limit: Int)
     case malformedConfig(path: String)
+    case duplicateKey(path: String)
     case nonObjectConfig(path: String)
 
     public var errorDescription: String? {
@@ -229,6 +230,8 @@ public enum MCPConfigLoadError: Error, Equatable, LocalizedError {
             "Config file at \(path) exceeds the \(limit)-byte size limit."
         case let .malformedConfig(path):
             "Config file at \(path) is not valid JSON."
+        case let .duplicateKey(path):
+            "Config file at \(path) contains a duplicate JSON object key."
         case let .nonObjectConfig(path):
             "Config file at \(path) must contain a JSON object."
         }
@@ -384,6 +387,14 @@ public func loadConfigObject(
         explicit: explicitPath != nil,
         limit: maximumConfigBytes,
     ) else { return nil }
+
+    do {
+        try rejectDuplicateJSONKeys(in: data)
+    } catch DuplicateJSONKeyError.duplicateKey {
+        throw MCPConfigLoadError.duplicateKey(path: path)
+    } catch {
+        throw MCPConfigLoadError.malformedConfig(path: path)
+    }
 
     let object: Any
     do {
