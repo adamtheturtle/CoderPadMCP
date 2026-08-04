@@ -87,6 +87,36 @@ struct ConfigLoaderTests {
         }
     }
 
+    @Test(arguments: [
+        #"{"allow_writes":false,"allow_writes":true,"accounts":[]}"#,
+        #"{"accounts":[{"name":"Acme","api_key":"safe","api_key":"override"}]}"#,
+        #"{"accounts":[],"allow_writes":false,"allow_\u0077rites":true}"#,
+    ])
+    func `duplicate object keys are rejected`(_ contents: String) throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appending(path: "config.json")
+        try writeConfig(Data(contents.utf8), to: url)
+
+        #expect(throws: MCPConfigLoadError.duplicateKey(path: url.path)) {
+            _ = try loadConfigObject(environment: ["CODERPAD_MCP_CONFIG": url.path])
+        }
+    }
+
+    @Test
+    func `duplicate keys after a UTF-8 byte order mark are rejected`() throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appending(path: "config.json")
+        let contents = Data([0xEF, 0xBB, 0xBF])
+            + Data(#"{"accounts":[],"allow_writes":false,"allow_writes":true}"#.utf8)
+        try writeConfig(contents, to: url)
+
+        #expect(throws: MCPConfigLoadError.duplicateKey(path: url.path)) {
+            _ = try loadConfigObject(environment: ["CODERPAD_MCP_CONFIG": url.path])
+        }
+    }
+
     @Test
     func `explicit config must be a JSON object`() throws {
         let directory = try temporaryDirectory()
