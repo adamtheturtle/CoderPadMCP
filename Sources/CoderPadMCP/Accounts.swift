@@ -241,12 +241,15 @@ private func trimmedNonEmpty(_ raw: String?) -> String? {
 }
 
 /// An account name suitable for tool arguments and resource URIs (#1583): control
-/// characters are stripped and the length capped, so a malformed config value can't
-/// produce an unusable resource catalog. Nil when nothing usable remains.
+/// and Unicode format characters are stripped and the length capped, so a malformed
+/// config value can't produce an unusable or visually deceptive resource catalog. Nil
+/// when nothing usable remains.
 private func sanitizedAccountName(_ raw: String?) -> String? {
     guard var value = trimmedNonEmpty(raw) else { return nil }
 
-    value = String(value.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) })
+    value = String(value.unicodeScalars.filter {
+        !CharacterSet.controlCharacters.contains($0) && $0.properties.generalCategory != .format
+    })
     value = String(value.prefix(100)).trimmingCharacters(in: .whitespacesAndNewlines)
     return value.isEmpty ? nil : value
 }
