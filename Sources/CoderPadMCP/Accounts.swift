@@ -35,6 +35,7 @@ public struct MCPAccount: Equatable, Sendable {
     /// Per-account write authorization. The account set's global switch must also be on.
     public let allowWrites: Bool
 
+    /// Creates an account after applying the same model invariants as file-loaded accounts.
     public init(
         id: String? = nil,
         name: String,
@@ -44,14 +45,32 @@ public struct MCPAccount: Equatable, Sendable {
         screenAPIKey: String?,
         screenRegion: String,
         allowWrites: Bool = true,
-    ) {
-        self.id = id ?? name
-        self.name = name
-        self.userEmail = userEmail
-        self.apiKey = apiKey
-        self.baseURL = baseURL
-        self.screenAPIKey = screenAPIKey
-        self.screenRegion = screenRegion.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    ) throws {
+        guard let normalizedName = sanitizedAccountName(name) else {
+            throw MCPConfigError.invalidCredential(account: "account", field: "name")
+        }
+        guard let normalizedID = sanitizedAccountName(id ?? normalizedName) else {
+            throw MCPConfigError.invalidCredential(account: normalizedName, field: "id")
+        }
+        guard let normalizedAPIKey = try validatedCredential(
+            apiKey,
+            account: normalizedName,
+            field: "api_key",
+        ) else {
+            throw MCPConfigError.missingAPIKey(account: normalizedName)
+        }
+
+        self.id = normalizedID
+        self.name = normalizedName
+        self.userEmail = try validatedCredential(userEmail, account: normalizedName, field: "user_email")
+        self.apiKey = normalizedAPIKey
+        self.baseURL = try parseBaseURL(baseURL.absoluteString, account: normalizedName)
+        self.screenAPIKey = try validatedCredential(
+            screenAPIKey,
+            account: normalizedName,
+            field: "screen_api_key",
+        )
+        self.screenRegion = try normalizedScreenRegion(from: screenRegion, account: normalizedName)
         self.allowWrites = allowWrites
     }
 
@@ -216,7 +235,7 @@ public enum MCPConfigLoadError: Error, Equatable, LocalizedError {
     }
 }
 
-private func screenRegion(from raw: String?, account: String) throws -> String {
+private func normalizedScreenRegion(from raw: String?, account: String) throws -> String {
     guard let region = trimmedNonEmpty(raw) else { return "us" }
 
     switch region.lowercased() {
@@ -228,12 +247,14 @@ private func screenRegion(from raw: String?, account: String) throws -> String {
 }
 
 private func configScreenRegion(_ entry: [String: Any], account: String) throws -> String {
-    guard let raw = entry["screen_region"] else { return try screenRegion(from: nil, account: account) }
+    guard let raw = entry["screen_region"] else {
+        return try normalizedScreenRegion(from: nil, account: account)
+    }
     guard let value = raw as? String else {
         throw MCPConfigError.invalidScreenRegion(account: account, region: String(describing: raw))
     }
 
-    return try screenRegion(from: value, account: account)
+    return try normalizedScreenRegion(from: value, account: account)
 }
 
 private func trimmedNonEmpty(_ raw: String?) -> String? {
@@ -481,7 +502,7 @@ private func environmentAccountSet(_ environment: [String: String], allowWrites:
         ),
         screenAPIKey: validatedCredential(environment["CODERPAD_SCREEN_API_KEY"],
                                           account: accountName, field: "CODERPAD_SCREEN_API_KEY"),
-        screenRegion: screenRegion(
+        screenRegion: normalizedScreenRegion(
             from: environment["CODERPAD_SCREEN_REGION"],
             account: accountName,
         ),

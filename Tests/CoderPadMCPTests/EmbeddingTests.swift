@@ -4,8 +4,8 @@ import Testing
 
 @Suite("Embedding")
 struct EmbeddingTests {
-    private func account(id: String, allowWrites: Bool) -> MCPAccount {
-        MCPAccount(
+    private func account(id: String, allowWrites: Bool) throws -> MCPAccount {
+        try MCPAccount(
             id: id,
             name: id.capitalized,
             userEmail: "\(id)@example.com",
@@ -18,9 +18,9 @@ struct EmbeddingTests {
     }
 
     @Test
-    func `write authorization combines the host and account switches`() {
-        let allowed = account(id: "allowed", allowWrites: true)
-        let denied = account(id: "denied", allowWrites: false)
+    func `write authorization combines the host and account switches`() throws {
+        let allowed = try account(id: "allowed", allowWrites: true)
+        let denied = try account(id: "denied", allowWrites: false)
         let enabled = MCPAccountSet(
             accounts: [allowed, denied],
             defaultName: allowed.name,
@@ -43,7 +43,7 @@ struct EmbeddingTests {
     @Test
     func `directory exposes host identity without credentials`() throws {
         let value = try #require(
-            MCPAccountSet(
+            try MCPAccountSet(
                 accounts: [account(id: "acme", allowWrites: true)],
                 defaultName: "Acme",
                 allowWrites: true,
@@ -100,6 +100,31 @@ struct EmbeddingTests {
 
         #expect(account.screenRegion == "eu")
         #expect(account.screenBaseURL.absoluteString == "https://www.codingame.eu")
+    }
+
+    @Test
+    func `public account construction rejects invalid model fields`() throws {
+        let https = try #require(URL(string: "https://app.coderpad.io"))
+        let http = try #require(URL(string: "http://app.coderpad.io"))
+
+        #expect(throws: MCPConfigError.missingAPIKey(account: "Acme")) {
+            try MCPAccount(name: "Acme", apiKey: "  ", baseURL: https,
+                           screenAPIKey: nil, screenRegion: "us")
+        }
+        #expect(throws: MCPConfigError.invalidBaseURL(
+            account: "Acme", baseURL: "http://app.coderpad.io",
+        )) {
+            try MCPAccount(name: "Acme", apiKey: "key", baseURL: http,
+                           screenAPIKey: nil, screenRegion: "us")
+        }
+        #expect(throws: MCPConfigError.invalidScreenRegion(account: "Acme", region: "europe")) {
+            try MCPAccount(name: "Acme", apiKey: "key", baseURL: https,
+                           screenAPIKey: nil, screenRegion: "europe")
+        }
+        #expect(throws: MCPConfigError.invalidCredential(account: "Acme", field: "user_email")) {
+            try MCPAccount(name: "Acme", userEmail: "user\u{202E}@example.com", apiKey: "key",
+                           baseURL: https, screenAPIKey: nil, screenRegion: "us")
+        }
     }
 
     @Test
