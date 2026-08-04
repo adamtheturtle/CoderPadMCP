@@ -37,7 +37,7 @@ func boundedResponseData(
     return try await BoundedHTTPResponseLoader(limit: limit).load(request)
 }
 
-private final class BoundedHTTPResponseLoader: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+final class BoundedHTTPResponseLoader: NSObject, URLSessionDataDelegate, @unchecked Sendable {
     private let limit: Int
     private let lock = NSLock()
     private var buffer: BoundedDataBuffer
@@ -101,6 +101,24 @@ private final class BoundedHTTPResponseLoader: NSObject, URLSessionDataDelegate,
         }
     }
 
+    func urlSession(
+        _: URLSession,
+        task _: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping @Sendable (URLRequest?) -> Void,
+    ) {
+        guard
+            let source = response.url,
+            let target = request.url,
+            Self.sameOrigin(source, target)
+        else {
+            completionHandler(nil)
+            return
+        }
+        completionHandler(request)
+    }
+
     func urlSession(_: URLSession, task _: URLSessionTask, didCompleteWithError error: (any Error)?) {
         if let error {
             finish(.failure(error))
@@ -141,5 +159,31 @@ private final class BoundedHTTPResponseLoader: NSObject, URLSessionDataDelegate,
 
         session?.finishTasksAndInvalidate()
         continuation?.resume(with: result)
+    }
+
+    private static func sameOrigin(_ lhs: URL, _ rhs: URL) -> Bool {
+        guard
+            let leftScheme = lhs.scheme?.lowercased(),
+            let rightScheme = rhs.scheme?.lowercased(),
+            let leftHost = lhs.host?.lowercased(),
+            let rightHost = rhs.host?.lowercased()
+        else {
+            return false
+        }
+
+        func effectivePort(_ url: URL, scheme: String) -> Int? {
+            if let port = url.port {
+                return port
+            }
+            switch scheme {
+            case "http": return 80
+            case "https": return 443
+            default: return nil
+            }
+        }
+
+        return leftScheme == rightScheme
+            && leftHost == rightHost
+            && effectivePort(lhs, scheme: leftScheme) == effectivePort(rhs, scheme: rightScheme)
     }
 }

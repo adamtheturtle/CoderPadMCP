@@ -12,6 +12,10 @@ import Foundation
 import MCP
 import Testing
 
+#if canImport(FoundationNetworking)
+    import FoundationNetworking
+#endif
+
 @Suite("Bounded HTTP responses")
 struct BoundedHTTPResponseTests {
     @Test
@@ -24,6 +28,75 @@ struct BoundedHTTPResponseTests {
             try buffer.append(Data([4, 5, 6]))
         }
         #expect(buffer.data == Data([1, 2, 3]))
+    }
+
+    @Test
+    func `cross-origin redirects are refused before sensitive headers can be resent`() throws {
+        let source = try #require(URL(string: "https://www.codingame.com/start"))
+        let target = try #require(URL(string: "https://attacker.example/collect"))
+        let response = try #require(HTTPURLResponse(
+            url: source,
+            statusCode: 302,
+            httpVersion: nil,
+            headerFields: ["Location": target.absoluteString],
+        ))
+        var proposed = URLRequest(url: target)
+        proposed.setValue("secret", forHTTPHeaderField: "API-Key")
+        let session = URLSession(configuration: .ephemeral)
+        defer { session.finishTasksAndInvalidate() }
+        let loader = BoundedHTTPResponseLoader(limit: 1024)
+        let decision = RedirectDecision()
+
+        loader.urlSession(
+            session,
+            task: session.dataTask(with: source),
+            willPerformHTTPRedirection: response,
+            newRequest: proposed,
+            completionHandler: { decision.record($0) },
+        )
+
+        #expect(decision.request == nil)
+    }
+
+    @Test
+    func `same-origin redirects retain their proposed request`() throws {
+        let source = try #require(URL(string: "https://www.codingame.com/start"))
+        let target = try #require(URL(string: "https://www.codingame.com:443/next"))
+        let response = try #require(HTTPURLResponse(
+            url: source,
+            statusCode: 302,
+            httpVersion: nil,
+            headerFields: ["Location": target.absoluteString],
+        ))
+        var proposed = URLRequest(url: target)
+        proposed.setValue("secret", forHTTPHeaderField: "API-Key")
+        let session = URLSession(configuration: .ephemeral)
+        defer { session.finishTasksAndInvalidate() }
+        let loader = BoundedHTTPResponseLoader(limit: 1024)
+        let decision = RedirectDecision()
+
+        loader.urlSession(
+            session,
+            task: session.dataTask(with: source),
+            willPerformHTTPRedirection: response,
+            newRequest: proposed,
+            completionHandler: { decision.record($0) },
+        )
+
+        #expect(decision.request?.value(forHTTPHeaderField: "API-Key") == "secret")
+    }
+}
+
+private final class RedirectDecision: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: URLRequest?
+
+    func record(_ request: URLRequest?) {
+        lock.withLock { storage = request }
+    }
+
+    var request: URLRequest? {
+        lock.withLock { storage }
     }
 }
 
