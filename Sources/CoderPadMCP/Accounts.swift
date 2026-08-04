@@ -51,7 +51,7 @@ public struct MCPAccount: Equatable, Sendable {
         self.apiKey = apiKey
         self.baseURL = baseURL
         self.screenAPIKey = screenAPIKey
-        self.screenRegion = screenRegion
+        self.screenRegion = screenRegion.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         self.allowWrites = allowWrites
     }
 

@@ -89,6 +89,20 @@ struct EmbeddingTests {
     }
 
     @Test
+    func `public accounts normalize the Screen region before routing`() throws {
+        let account = try MCPAccount(
+            name: "Acme",
+            apiKey: "secret",
+            baseURL: #require(URL(string: "https://app.coderpad.io")),
+            screenAPIKey: "screen-secret",
+            screenRegion: "  EU\n",
+        )
+
+        #expect(account.screenRegion == "eu")
+        #expect(account.screenBaseURL.absoluteString == "https://www.codingame.eu")
+    }
+
+    @Test
     func `cache hooks preserve opaque encoded records`() async {
         let expected = Data(#"[{"id":"pad-1"}]"#.utf8)
         let cache = CoderPadMCPCache(
