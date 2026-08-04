@@ -320,6 +320,16 @@ struct AccountsTests {
     }
 
     @Test
+    func `account names remove bidi and zero-width format controls`() throws {
+        let set = try makeAccountSet(config: [
+            "accounts": [["name": "Ac\u{202E}m\u{200B}e", "api_key": "key"]],
+        ], environment: [:])
+
+        #expect(set.defaultAccount?.name == "Acme")
+        #expect(set.directory().first?["name"] as? String == "Acme")
+    }
+
+    @Test
     func `environment credentials use the same validation`() {
         #expect(throws: MCPConfigError.invalidCredential(
             account: "default", field: "CODERPAD_SCREEN_API_KEY",
