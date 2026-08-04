@@ -156,6 +156,8 @@ private func accountNamesEqual(_ lhs: String, _ rhs: String) -> Bool {
     lhs.caseInsensitiveCompare(rhs) == .orderedSame
 }
 
+private let maximumAccountNameUTF8Bytes = 256
+
 /// Why a configuration couldn't be turned into a usable account set.
 public enum MCPConfigError: Error, Equatable {
     case noAccounts
@@ -241,16 +243,25 @@ private func trimmedNonEmpty(_ raw: String?) -> String? {
 }
 
 /// An account name suitable for tool arguments and resource URIs (#1583): control
-/// and Unicode format characters are stripped and the length capped, so a malformed
-/// config value can't produce an unusable or visually deceptive resource catalog. Nil
-/// when nothing usable remains.
+/// and Unicode format characters are stripped and both display characters and UTF-8
+/// bytes are capped, so a malformed config value can't produce an unusable, oversized,
+/// or visually deceptive resource catalog. Nil when nothing usable remains.
 private func sanitizedAccountName(_ raw: String?) -> String? {
     guard var value = trimmedNonEmpty(raw) else { return nil }
 
     value = String(value.unicodeScalars.filter {
         !CharacterSet.controlCharacters.contains($0) && $0.properties.generalCategory != .format
     })
-    value = String(value.prefix(100)).trimmingCharacters(in: .whitespacesAndNewlines)
+    value = String(value.prefix(100))
+    var byteBounded = ""
+    var byteCount = 0
+    for scalar in value.unicodeScalars {
+        let scalarBytes = scalar.utf8.count
+        guard byteCount + scalarBytes <= maximumAccountNameUTF8Bytes else { break }
+        byteBounded.unicodeScalars.append(scalar)
+        byteCount += scalarBytes
+    }
+    value = byteBounded.trimmingCharacters(in: .whitespacesAndNewlines)
     return value.isEmpty ? nil : value
 }
 
