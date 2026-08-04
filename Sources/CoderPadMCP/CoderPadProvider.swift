@@ -38,6 +38,9 @@ private let screenAPIPrefix = "/assessment/api/v1.1"
 private let interviewReadResponseLimit = 8 * 1024 * 1024
 private let interviewWriteResponseLimit = 1 * 1024 * 1024
 private let screenReadResponseLimit = 8 * 1024 * 1024
+private let knownToolNames = Set(
+    availableTools(screenEnabled: true, writesEnabled: true).map(\.name),
+)
 
 // MARK: - CoderPad REST
 
@@ -172,6 +175,7 @@ private func cachedRecords(
     else {
         return nil
     }
+
     return records
 }
 
@@ -260,6 +264,12 @@ public struct CoderPadProvider: MCPToolProvider {
     }
 
     public func callTool(_ name: String, arguments: [String: Value]?) async -> CallTool.Result {
+        guard knownToolNames.contains(name) else {
+            let result = errorResult("Unknown tool: \(name)")
+            record(name: name, account: nil, result: result)
+            return result
+        }
+
         // list_accounts is a directory-level query - it isn't scoped to one account.
         if name == "list_accounts" {
             let result = jsonResult(["accounts": accountSet.directory()])
