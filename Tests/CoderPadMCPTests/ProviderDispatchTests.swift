@@ -4,10 +4,10 @@ import Testing
 
 @Suite("Provider dispatch")
 struct ProviderDispatchTests {
-    @Test("Unknown tools are rejected before account resolution")
-    func unknownToolWithoutAccounts() async throws {
+    @Test
+    func `unknown tools are rejected before account resolution`() async {
         let provider = CoderPadProvider(
-            accountSet: MCPAccountSet(accounts: [], defaultName: "", allowWrites: false)
+            accountSet: MCPAccountSet(accounts: [], defaultName: "", allowWrites: false),
         )
 
         let result = await provider.callTool("does_not_exist", arguments: nil)
@@ -17,6 +17,7 @@ struct ProviderDispatchTests {
             Issue.record("Expected a text error result")
             return
         }
+
         #expect(text == "Unknown tool: does_not_exist")
     }
 }

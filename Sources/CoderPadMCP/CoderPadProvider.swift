@@ -39,7 +39,7 @@ private let interviewReadResponseLimit = 8 * 1024 * 1024
 private let interviewWriteResponseLimit = 1 * 1024 * 1024
 private let screenReadResponseLimit = 8 * 1024 * 1024
 private let knownToolNames = Set(
-    availableTools(screenEnabled: true, writesEnabled: true).map(\.name)
+    availableTools(screenEnabled: true, writesEnabled: true).map(\.name),
 )
 
 // MARK: - CoderPad REST
@@ -175,6 +175,7 @@ private func cachedRecords(
     else {
         return nil
     }
+
     return records
 }
 
