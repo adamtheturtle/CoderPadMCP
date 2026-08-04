@@ -330,6 +330,19 @@ struct AccountsTests {
     }
 
     @Test
+    func `account names are bounded by UTF-8 bytes as well as characters`() throws {
+        let giantGrapheme = "A" + String(repeating: "\u{0301}", count: 2000)
+        let set = try makeAccountSet(config: [
+            "accounts": [["name": giantGrapheme, "api_key": "key"]],
+        ], environment: [:])
+        let name = try #require(set.defaultAccount?.name)
+
+        #expect(name.count == 1)
+        #expect(name.utf8.count <= 256)
+        #expect(name.utf8.count < giantGrapheme.utf8.count)
+    }
+
+    @Test
     func `environment credentials use the same validation`() {
         #expect(throws: MCPConfigError.invalidCredential(
             account: "default", field: "CODERPAD_SCREEN_API_KEY",
