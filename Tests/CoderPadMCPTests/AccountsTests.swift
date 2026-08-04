@@ -236,12 +236,12 @@ struct AccountsTests {
     /// A name matching more than one configured account is ambiguous and
     /// resolves to nil instead of whichever was listed first (#1582).
     @Test
-    func `resolve returns nil for ambiguous case-insensitive matches`() {
-        let make: (String, String) -> MCPAccount = { id, name in
-            MCPAccount(id: id, name: name, apiKey: "k", baseURL: URL(string: "https://app.coderpad.io")!,
-                       screenAPIKey: nil, screenRegion: "us")
+    func `resolve returns nil for ambiguous case-insensitive matches`() throws {
+        let make: (String, String) throws -> MCPAccount = { id, name in
+            try MCPAccount(id: id, name: name, apiKey: "k", baseURL: URL(string: "https://app.coderpad.io")!,
+                           screenAPIKey: nil, screenRegion: "us")
         }
-        let set = MCPAccountSet(
+        let set = try MCPAccountSet(
             accounts: [make("first", "Acme"), make("second", "ACME")],
             defaultName: "first",
             allowWrites: false,

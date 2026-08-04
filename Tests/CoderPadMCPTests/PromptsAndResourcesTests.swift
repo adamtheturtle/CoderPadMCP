@@ -172,10 +172,12 @@ struct PromptsTests {
 struct ResourcesTests {
     private func accountSet() throws -> MCPAccountSet {
         let baseURL = try #require(URL(string: "https://example.com"))
-        return MCPAccountSet(
+        return try MCPAccountSet(
             accounts: [
-                MCPAccount(name: "Acme EU", apiKey: "a", baseURL: baseURL, screenAPIKey: nil, screenRegion: "us"),
-                MCPAccount(name: "Beta", apiKey: "b", baseURL: baseURL, screenAPIKey: nil, screenRegion: "us"),
+                MCPAccount(name: "Acme EU", apiKey: "a", baseURL: baseURL,
+                           screenAPIKey: nil, screenRegion: "us"),
+                MCPAccount(name: "Beta", apiKey: "b", baseURL: baseURL,
+                           screenAPIKey: nil, screenRegion: "us"),
             ],
             defaultName: "Acme EU",
             allowWrites: false,
