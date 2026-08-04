@@ -7,6 +7,12 @@
 import Foundation
 import Testing
 
+#if canImport(Darwin)
+    import Darwin
+#elseif canImport(Glibc)
+    import Glibc
+#endif
+
 @Suite("Config file loading")
 struct ConfigLoaderTests {
     private func temporaryDirectory() throws -> URL {
@@ -44,6 +50,18 @@ struct ConfigLoaderTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         #expect(throws: MCPConfigLoadError.notRegularFile(path: directory.path)) {
             _ = try loadConfigObject(environment: ["CODERPAD_MCP_CONFIG": directory.path])
+        }
+    }
+
+    @Test
+    func `explicit config FIFO is rejected without waiting for a writer`() throws {
+        let directory = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fifo = directory.appending(path: "config.json")
+        try #require(mkfifo(fifo.path, 0o600) == 0)
+
+        #expect(throws: MCPConfigLoadError.notRegularFile(path: fifo.path)) {
+            _ = try securelyReadConfig(path: fifo.path, explicit: true, limit: 1_048_576)
         }
     }
 

@@ -17,7 +17,10 @@ func securelyReadConfig(
     limit: Int,
     afterValidation: () throws -> Void = {},
 ) throws -> Data? {
-    let descriptor = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW)
+    // `fstat` below is the authority on the file type, but opening a FIFO read-only blocks
+    // until a writer connects. Nonblocking mode lets us obtain the descriptor and reject
+    // special files without allowing a crafted config path to hang server startup.
+    let descriptor = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK)
     guard descriptor >= 0 else {
         if errno == ENOENT, !explicit {
             return nil
