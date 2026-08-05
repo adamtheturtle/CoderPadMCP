@@ -1,0 +1,11 @@
+# Repository-local configuration prevents SwiftFormat from inheriting options
+# from a parent checkout when this package is developed as a nested dependency.
+--swiftversion 6.2
+--exclude .build
+
+# SwiftFormat merges every config found between the input and filesystem root.
+# Restore defaults for options the containing app workspace opts into so a
+# nested checkout behaves exactly like this repository at a standalone path.
+--disable blankLineAfterSwitchCase,blankLinesAfterGuardStatements,isEmpty,noExplicitOwnership
+--enable wrapMultilineStatementBraces
+--trailing-commas always
