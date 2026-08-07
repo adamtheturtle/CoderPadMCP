@@ -4,7 +4,6 @@
 DerivedData/
 *.xcodeproj
 xcuserdata/
-Package.resolved
 
 # Vale styles downloaded by ``vale sync``
 styles/
