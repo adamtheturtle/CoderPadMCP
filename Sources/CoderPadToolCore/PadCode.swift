@@ -215,185 +215,252 @@ public func padCodeFiles(
     ).files
 }
 
-private func assemblePadCodeFiles(
-    pad: [String: Any], environments: [PadCodeEnvironment], maxFileChars: Int?,
-    requestedPadID: String?,
-) -> PadCodeFileAssembly {
+private final class PadCodeAssemblyState {
     var files: [[String: Any]] = []
     var seenFilenames = Set<String>()
     var remainingContentBytes = maxPadCodeContentBytes
     var omittedFileCount = 0
     var omittedEnvironmentIDs: [Int] = []
     var schemaErrors: [String] = []
+
+    func assembly() -> PadCodeFileAssembly {
+        PadCodeFileAssembly(
+            files: files,
+            omittedFileCount: omittedFileCount,
+            omittedEnvironmentIDs: omittedEnvironmentIDs,
+            schemaErrors: schemaErrors,
+        )
+    }
+
+    func noteOmitted(environmentID: Int) {
+        omittedFileCount += 1
+        if !omittedEnvironmentIDs.contains(environmentID) {
+            omittedEnvironmentIDs.append(environmentID)
+        }
+    }
+}
+
+private func assemblePadCodeFiles(
+    pad: [String: Any], environments: [PadCodeEnvironment], maxFileChars: Int?,
+    requestedPadID: String?,
+) -> PadCodeFileAssembly {
+    let state = PadCodeAssemblyState()
     // Ownership checks run only for a concrete get_pad_code payload so pure
     // file-assembly unit tests can omit API identity fields (#176, #177).
     let padIdentities = requestedPadID.map { padIdentityCandidates(requestedID: $0, pad: pad) }
 
     var seenEnvironments = Set<Int>()
     for environment in environments where seenEnvironments.insert(environment.id).inserted {
-        if let padIdentities {
-            let ownershipErrors = environmentOwnershipErrors(
-                environment: environment, expectedPadIdentities: padIdentities,
-            )
-            if !ownershipErrors.isEmpty {
-                schemaErrors.append(contentsOf: ownershipErrors)
-                continue
-            }
-        }
+        appendEnvironmentPadCodeFiles(
+            environment: environment,
+            padIdentities: padIdentities,
+            maxFileChars: maxFileChars,
+            state: state,
+        )
+    }
 
-        let environmentLanguageResult = sanitizedLanguageResult(environment.object["language"])
-        if environmentLanguageResult.rejected {
-            schemaErrors.append("Environment \(environment.id) language metadata was malformed.")
-        }
-        let environmentLanguage = environmentLanguageResult.value
+    appendLegacyPadCodeFile(pad: pad, maxFileChars: maxFileChars, state: state)
+    return state.assembly()
+}
 
-        let rawFileContents = environment.object["file_contents"]
-        if rawFileContents == nil {
-            schemaErrors.append("Environment \(environment.id) is missing file_contents.")
-            continue
-        }
-        guard let fileContents = rawFileContents as? [[String: Any]] else {
-            schemaErrors.append(
-                "Environment \(environment.id) file_contents was not an array of file objects.",
-            )
-            continue
-        }
-
-        for file in fileContents {
-            guard files.count < maxPadCodeFiles else {
-                omittedFileCount += 1
-                if !omittedEnvironmentIDs.contains(environment.id) {
-                    omittedEnvironmentIDs.append(environment.id)
-                }
-                continue
-            }
-
-            let rawBinary = file["binary"]
-            let binaryFlagValid: Bool
-            let isBinary: Bool
-            if rawBinary == nil {
-                binaryFlagValid = true
-                isBinary = false
-            } else if let flag = rawBinary as? Bool {
-                binaryFlagValid = true
-                isBinary = flag
-            } else {
-                // Non-boolean binary flags must not be treated as false (#124).
-                binaryFlagValid = false
-                isBinary = false
-                schemaErrors.append(
-                    "Environment \(environment.id) file had a malformed binary flag.",
-                )
-            }
-
-            // Binary entries carry no text contents and must not consume the text
-            // budget or be dropped when that budget is exhausted (#125).
-            if !isBinary, remainingContentBytes <= 64 {
-                omittedFileCount += 1
-                if !omittedEnvironmentIDs.contains(environment.id) {
-                    omittedEnvironmentIDs.append(environment.id)
-                }
-                continue
-            }
-
-            let languageResult = sanitizedLanguageResult(file["language"])
-            if languageResult.rejected {
-                schemaErrors.append(
-                    "Environment \(environment.id) file language metadata was malformed.",
-                )
-            }
-            let language = languageResult.value ?? environmentLanguage
-
-            let pathResult = sanitizedFilePathResult(file["path"])
-            if pathResult.rejected {
-                schemaErrors.append(
-                    "Environment \(environment.id) file path was unsafe or malformed.",
-                )
-            }
-            let filename = uniqueFilename(
-                pathResult.value ?? synthesizedFilename(language: language),
-                seen: &seenFilenames,
-            )
-
-            var entry: [String: Any] = [
-                // Remote paths are untrusted: traversal, control characters, or
-                // unbounded names must not flow into tool output that agents may
-                // hand to file operations (#1593).
-                "filename": filename,
-                "environment_id": environment.id,
-            ]
-            if isBinary {
-                entry["binary"] = true
-            } else {
-                let rawContents = file["contents"]
-                let contents = rawContents as? String
-                let perFileLimit = maxFileChars.flatMap { $0 > 0 ? $0 : nil } ?? defaultMaxFileChars
-                let aggregateLimit = max(1, remainingContentBytes - 64)
-                // Missing or null nonbinary contents are schema errors, not empty
-                // complete files (#122, #123).
-                if contents == nil {
-                    entry["contents"] = ""
-                    if rawContents == nil || rawContents is NSNull {
-                        entry["error"] = "The file's contents were missing in the API response."
-                        schemaErrors.append(
-                            "Environment \(environment.id) file \(filename) had missing contents.",
-                        )
-                    } else {
-                        entry["error"] = "The file's contents were not a string in the API response."
-                        schemaErrors.append(
-                            "Environment \(environment.id) file \(filename) had non-string contents.",
-                        )
-                    }
-                } else if let contents {
-                    let boundedContents = truncate(contents, to: min(perFileLimit, aggregateLimit))
-                    entry["contents"] = boundedContents
-                    remainingContentBytes = max(0, remainingContentBytes - boundedContents.utf8.count)
-                }
-            }
-            if let language {
-                entry["language"] = language
-            }
-            if !binaryFlagValid {
-                entry["error"] = "The file's binary flag was not a boolean in the API response."
-            }
-            files.append(entry)
+private func appendEnvironmentPadCodeFiles(
+    environment: PadCodeEnvironment,
+    padIdentities: Set<String>?,
+    maxFileChars: Int?,
+    state: PadCodeAssemblyState,
+) {
+    if let padIdentities {
+        let ownershipErrors = environmentOwnershipErrors(
+            environment: environment, expectedPadIdentities: padIdentities,
+        )
+        if !ownershipErrors.isEmpty {
+            state.schemaErrors.append(contentsOf: ownershipErrors)
+            return
         }
     }
 
-    let referencedEnvironmentIDs = parsePadEnvironmentIDs(in: pad)
-    if files.isEmpty, omittedFileCount == 0, referencedEnvironmentIDs.ids.isEmpty,
-       !referencedEnvironmentIDs.malformedContainer,
-       let rawContents = pad["contents"], !(rawContents is NSNull)
-    {
-        if let contents = rawContents as? String {
-            let languageResult = sanitizedLanguageResult(pad["language"])
-            if languageResult.rejected {
-                schemaErrors.append("The legacy pad language metadata was malformed.")
-            }
-            let language = languageResult.value
-            let filename = uniqueFilename(synthesizedFilename(language: language), seen: &seenFilenames)
-            var entry: [String: Any] = [
-                "filename": filename,
-                "contents": truncate(contents, to: min(
-                    maxFileChars.flatMap { $0 > 0 ? $0 : nil } ?? defaultMaxFileChars,
-                    max(1, remainingContentBytes - 64),
-                )),
-            ]
-            if let language {
-                entry["language"] = language
-            }
-            files.append(entry)
-        } else {
-            schemaErrors.append("The legacy pad contents were not a string in the API response.")
-        }
+    let environmentLanguageResult = sanitizedLanguageResult(environment.object["language"])
+    if environmentLanguageResult.rejected {
+        state.schemaErrors.append("Environment \(environment.id) language metadata was malformed.")
+    }
+    let environmentLanguage = environmentLanguageResult.value
+
+    let rawFileContents = environment.object["file_contents"]
+    if rawFileContents == nil {
+        state.schemaErrors.append("Environment \(environment.id) is missing file_contents.")
+        return
+    }
+    guard let fileContents = rawFileContents as? [[String: Any]] else {
+        state.schemaErrors.append(
+            "Environment \(environment.id) file_contents was not an array of file objects.",
+        )
+        return
     }
 
-    return PadCodeFileAssembly(
-        files: files,
-        omittedFileCount: omittedFileCount,
-        omittedEnvironmentIDs: omittedEnvironmentIDs,
-        schemaErrors: schemaErrors,
+    for file in fileContents where appendPadCodeFileEntry(
+        file: file,
+        environment: environment,
+        environmentLanguage: environmentLanguage,
+        maxFileChars: maxFileChars,
+        state: state,
+    ) {
+        state.noteOmitted(environmentID: environment.id)
+    }
+}
+
+/// Returns true when the file was omitted due to aggregate budgets.
+private func appendPadCodeFileEntry(
+    file: [String: Any],
+    environment: PadCodeEnvironment,
+    environmentLanguage: String?,
+    maxFileChars: Int?,
+    state: PadCodeAssemblyState,
+) -> Bool {
+    guard state.files.count < maxPadCodeFiles else { return true }
+
+    let binary = parsedBinaryFlag(
+        file["binary"], environmentID: environment.id, schemaErrors: &state.schemaErrors,
     )
+    // Binary entries carry no text contents and must not consume the text
+    // budget or be dropped when that budget is exhausted (#125).
+    if !binary.isBinary, state.remainingContentBytes <= 64 {
+        return true
+    }
+
+    let languageResult = sanitizedLanguageResult(file["language"])
+    if languageResult.rejected {
+        state.schemaErrors.append(
+            "Environment \(environment.id) file language metadata was malformed.",
+        )
+    }
+    let language = languageResult.value ?? environmentLanguage
+
+    let pathResult = sanitizedFilePathResult(file["path"])
+    if pathResult.rejected {
+        state.schemaErrors.append(
+            "Environment \(environment.id) file path was unsafe or malformed.",
+        )
+    }
+    let filename = uniqueFilename(
+        pathResult.value ?? synthesizedFilename(language: language),
+        seen: &state.seenFilenames,
+    )
+
+    var entry: [String: Any] = [
+        // Remote paths are untrusted: traversal, control characters, or
+        // unbounded names must not flow into tool output that agents may
+        // hand to file operations (#1593).
+        "filename": filename,
+        "environment_id": environment.id,
+    ]
+    if binary.isBinary {
+        entry["binary"] = true
+    } else {
+        applyNonbinaryContents(
+            file: file,
+            environmentID: environment.id,
+            filename: filename,
+            maxFileChars: maxFileChars,
+            state: state,
+            entry: &entry,
+        )
+    }
+    if let language {
+        entry["language"] = language
+    }
+    if !binary.valid {
+        entry["error"] = "The file's binary flag was not a boolean in the API response."
+    }
+    state.files.append(entry)
+    return false
+}
+
+private struct ParsedBinaryFlag {
+    let isBinary: Bool
+    let valid: Bool
+}
+
+private func parsedBinaryFlag(
+    _ rawBinary: Any?, environmentID: Int, schemaErrors: inout [String],
+) -> ParsedBinaryFlag {
+    if rawBinary == nil {
+        return ParsedBinaryFlag(isBinary: false, valid: true)
+    }
+    if let flag = rawBinary as? Bool {
+        return ParsedBinaryFlag(isBinary: flag, valid: true)
+    }
+    // Non-boolean binary flags must not be treated as false (#124).
+    schemaErrors.append("Environment \(environmentID) file had a malformed binary flag.")
+    return ParsedBinaryFlag(isBinary: false, valid: false)
+}
+
+private func applyNonbinaryContents(
+    file: [String: Any],
+    environmentID: Int,
+    filename: String,
+    maxFileChars: Int?,
+    state: PadCodeAssemblyState,
+    entry: inout [String: Any],
+) {
+    let rawContents = file["contents"]
+    let perFileLimit = maxFileChars.flatMap { $0 > 0 ? $0 : nil } ?? defaultMaxFileChars
+    let aggregateLimit = max(1, state.remainingContentBytes - 64)
+    // Missing or null nonbinary contents are schema errors, not empty
+    // complete files (#122, #123).
+    guard let contents = rawContents as? String else {
+        entry["contents"] = ""
+        if rawContents == nil || rawContents is NSNull {
+            entry["error"] = "The file's contents were missing in the API response."
+            state.schemaErrors.append(
+                "Environment \(environmentID) file \(filename) had missing contents.",
+            )
+        } else {
+            entry["error"] = "The file's contents were not a string in the API response."
+            state.schemaErrors.append(
+                "Environment \(environmentID) file \(filename) had non-string contents.",
+            )
+        }
+        return
+    }
+
+    let boundedContents = truncate(contents, to: min(perFileLimit, aggregateLimit))
+    entry["contents"] = boundedContents
+    state.remainingContentBytes = max(0, state.remainingContentBytes - boundedContents.utf8.count)
+}
+
+private func appendLegacyPadCodeFile(
+    pad: [String: Any],
+    maxFileChars: Int?,
+    state: PadCodeAssemblyState,
+) {
+    let referencedEnvironmentIDs = parsePadEnvironmentIDs(in: pad)
+    guard state.files.isEmpty, state.omittedFileCount == 0, referencedEnvironmentIDs.ids.isEmpty,
+          !referencedEnvironmentIDs.malformedContainer,
+          let rawContents = pad["contents"], !(rawContents is NSNull)
+    else { return }
+
+    guard let contents = rawContents as? String else {
+        state.schemaErrors.append("The legacy pad contents were not a string in the API response.")
+        return
+    }
+
+    let languageResult = sanitizedLanguageResult(pad["language"])
+    if languageResult.rejected {
+        state.schemaErrors.append("The legacy pad language metadata was malformed.")
+    }
+    let language = languageResult.value
+    let filename = uniqueFilename(synthesizedFilename(language: language), seen: &state.seenFilenames)
+    var entry: [String: Any] = [
+        "filename": filename,
+        "contents": truncate(contents, to: min(
+            maxFileChars.flatMap { $0 > 0 ? $0 : nil } ?? defaultMaxFileChars,
+            max(1, state.remainingContentBytes - 64),
+        )),
+    ]
+    if let language {
+        entry["language"] = language
+    }
+    state.files.append(entry)
 }
 
 private struct SanitizedStringResult {
