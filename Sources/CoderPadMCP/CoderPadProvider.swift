@@ -102,7 +102,11 @@ private func getRecord(
         .first { String(describing: $0[idKey] ?? "") == id || String(describing: $0["slug"] ?? "") == id }
     guard let record else { return toolResult(response) }
 
-    return jsonResult(record)
+    var payload = record
+    payload["_stale"] = true
+    payload["_cache_fallback"] = true
+    payload["_transport_failure"] = response.body
+    return jsonResult(payload)
 }
 
 private func invalidating(
@@ -111,10 +115,21 @@ private func invalidating(
     account: MCPAccount,
     cache: CoderPadMCPCache?,
 ) async -> CallTool.Result {
-    if result.isError != true {
+    // Dry runs report changed:false and must not drop live cache entries (#174).
+    if result.isError != true, !isDryRunSuccess(result) {
         await cache?.invalidate(kind, account.id)
     }
     return result
+}
+
+private func isDryRunSuccess(_ result: CallTool.Result) -> Bool {
+    guard result.isError != true,
+          case let .text(text, _, _)? = result.content.first,
+          let data = text.data(using: .utf8),
+          let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+    else { return false }
+
+    return object["dry_run"] as? Bool == true
 }
 
 // MARK: - Server
@@ -492,7 +507,25 @@ private func dispatchScreenOrWrite(
             return errorResult("test must be a positive integer.")
         }
 
-        return try await toolResult(screenGet("/tests/\(test)", account: account))
+        let statusResponse = try await screenGet("/tests/\(test)", account: account)
+        guard statusResponse.ok, var object = jsonObject(statusResponse.data) else {
+            return toolResult(statusResponse)
+        }
+
+        let reportResponse = try await screenGet("/tests/\(test)/report", account: account)
+        if reportResponse.ok, let report = jsonObject(reportResponse.data) {
+            object["report"] = report
+        } else if reportResponse.ok, let reportValue = try? JSONSerialization.jsonObject(with: reportResponse.data),
+                  JSONSerialization.isValidJSONObject(reportValue) || reportValue is [Any]
+        {
+            object["report"] = reportValue
+        } else if reportResponse.status != 404 {
+            object["report_error"] = reportResponse.status == 0
+                ? "Transport failure: \(reportResponse.body)"
+                : sanitizedHTTPErrorMessage(status: reportResponse.status, body: reportResponse.body)
+        }
+
+        return jsonResult(object)
 
     case "create_pad":
         let result = try await createPad(arguments: arguments, account: account)

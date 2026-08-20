@@ -11,6 +11,7 @@ public let maxPadTitleCharacters = 255
 /// UTF-8 safety bound for titles: at most four bytes per Unicode scalar (#162).
 public let maxPadTitleUTF8Bytes = maxPadTitleCharacters * 4
 public let maxOwnerEmailBytes = 254
+public let maxScreenCandidateEmailCharacters = 320
 public let maxMCPWriteFieldBytes = 512 * 1024
 public let maxMCPWriteBodyBytes = 1024 * 1024
 

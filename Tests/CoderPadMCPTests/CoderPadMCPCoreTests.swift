@@ -232,10 +232,10 @@ struct ArgumentTests {
         #expect(pageValidationError(1) == nil)
         #expect(pageValidationError(0)?.contains("page") == true)
         #expect(screenPaginationValidationError(start: 0, limit: 1) == nil)
-        #expect(screenPaginationValidationError(start: nil, limit: 50) == nil)
+        #expect(screenPaginationValidationError(start: nil, limit: maxPaginationLimit) == nil)
         #expect(screenPaginationValidationError(start: -1, limit: nil)?.contains("start") == true)
         #expect(screenPaginationValidationError(start: nil, limit: 0)?.contains("limit") == true)
-        #expect(screenPaginationValidationError(start: nil, limit: 51) == "limit must be 50 or less.")
+        #expect(screenPaginationValidationError(start: nil, limit: maxPaginationLimit + 1) == "limit must be \(maxPaginationLimit) or less.")
     }
 
     @Test
@@ -344,7 +344,7 @@ struct ToolCatalogTests {
         #expect(try property("start", of: "screen_list_tests")["minimum"] as? Int == 0)
         #expect(try property("campaignId", of: "screen_list_tests")["minimum"] as? Int == 1)
         #expect(try property("limit", of: "screen_list_tests")["minimum"] as? Int == 1)
-        #expect(try property("limit", of: "screen_list_tests")["maximum"] as? Int == 50)
+        #expect(try property("limit", of: "screen_list_tests")["maximum"] as? Int == maxPaginationLimit)
         #expect(try property("question", of: "get_question")["minimum"] as? Int == 1)
         #expect(try property("test", of: "screen_get_test")["minimum"] as? Int == 1)
         #expect(try property("question", of: "update_question")["minimum"] as? Int == 1)

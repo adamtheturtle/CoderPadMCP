@@ -67,11 +67,18 @@ public struct QuestionMatcher: Sendable {
 
 /// Folds the interview-type spellings the API and docs have used (`take-home`,
 /// `take_home`, `takehome`; `live`) onto one canonical token for comparison (#1609).
+/// Unknown type tokens keep their separators so values such as `a-b` and `a_b` stay
+/// distinct (#186).
 public func canonicalInterviewType(_ raw: String) -> String {
-    raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        .lowercased()
+    let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    let folded = normalized
         .replacingOccurrences(of: "-", with: "")
         .replacingOccurrences(of: "_", with: "")
+    switch folded {
+    case "takehome": return "takehome"
+    case "live": return "live"
+    default: return normalized
+    }
 }
 
 /// Echoes the active question filters back into a result, for clarity on what was counted.
