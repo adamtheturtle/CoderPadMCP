@@ -5,6 +5,7 @@
 
 import Foundation
 import MCP
+import MCPKit
 
 /// Parses the write safety flag without failing open. Absent is a valid live
 /// request; a present value must be an actual boolean or the exact JSON-string
@@ -108,6 +109,39 @@ public func invalidIntegerArgument(
 ) -> String? {
     names.first { name in
         arguments?[name] != nil && strictIntArgument(arguments, name) == nil
+    }
+}
+
+/// Names of integer-typed arguments for a tool. Validation must stay scoped to the
+/// selected tool so an unrelated `page:false` cannot break `whoami` (#111).
+public func integerArgumentNames(forTool name: String) -> [String] {
+    switch name {
+    case "list_pads", "list_pads_compact", "list_questions", "list_questions_compact":
+        ["page"]
+    case "get_pad_code":
+        ["max_file_chars"]
+    case "get_question", "update_question":
+        ["question"]
+    case "screen_list_tests":
+        ["campaignId", "start", "limit"]
+    case "screen_get_test":
+        ["test"]
+    case "create_pad":
+        ["question_id"]
+    default:
+        []
+    }
+}
+
+/// A present argument that cannot be read as a string-like scalar (string / int /
+/// finite double). Used so filters and sort cannot silently widen when a client
+/// sends a boolean, array, object, or null (#110, #112–#115).
+public func invalidPresentStringArgument(
+    _ arguments: [String: Value]?,
+    names: some Sequence<String>,
+) -> String? {
+    names.first { name in
+        arguments?[name] != nil && stringArgument(arguments, name) == nil
     }
 }
 

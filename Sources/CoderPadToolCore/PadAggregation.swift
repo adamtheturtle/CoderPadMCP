@@ -12,45 +12,88 @@ import Foundation
 
 public let maxPaginationTokenBytes = 256
 
+/// How a list response's `next_page` should drive the next scan request.
+/// Distinguishes legitimate end-of-data from a present but unusable continuation
+/// so count/aggregate tools cannot treat malformed pagination as a complete scan
+/// (#116, #118, #188).
+public enum NextPageContinuation: Equatable, Sendable {
+    /// Absent, null, or empty — no further pages.
+    case finished
+    /// A bounded page token for the next request.
+    case page(String)
+    /// A present value that is not a valid continuation.
+    case malformed
+}
+
 /// Interprets a `next_page` value (an absolute/relative continuation URL, a string page
-/// token, or a number in some responses); nil means there are no more pages. CoderPad's
-/// published response shape uses an absolute URL, but the provider rebuilds requests
-/// against the configured account origin rather than following a server-supplied URL
-/// with credentials. Extracting only its `page` query value preserves that boundary.
-/// Plain tokens remain compatible with proxies that return only the page value, and
-/// positive whole numbers are accepted in JSON numeric forms (#1599). Booleans,
-/// zero, negative values, and fractional values are not tokens.
-public func nextPageToken(_ value: Any?) -> String? {
+/// token, or a number in some responses). CoderPad's published response shape uses an
+/// absolute URL, but the provider rebuilds requests against the configured account
+/// origin rather than following a server-supplied URL with credentials. Extracting
+/// only its `page` query value preserves that boundary. Plain tokens remain compatible
+/// with proxies that return only the page value, and positive whole numbers are
+/// accepted in JSON numeric forms (#1599). Booleans, zero, negative values, fractional
+/// values, URL-shaped strings without exactly one `page` query, and oversized tokens
+/// are malformed rather than finished.
+public func nextPageContinuation(_ value: Any?) -> NextPageContinuation {
+    if value == nil || value is NSNull {
+        return .finished
+    }
     if value is Bool {
-        return nil
+        return .malformed
     }
     switch value {
     case let token as String:
         let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
+        guard !trimmed.isEmpty else { return .finished }
 
-        if let components = URLComponents(string: trimmed),
-           let page = components.queryItems?.first(where: { $0.name == "page" })?.value?
-           .trimmingCharacters(in: .whitespacesAndNewlines),
-           !page.isEmpty
-        {
-            return boundedPaginationToken(page)
+        if let components = URLComponents(string: trimmed), isURLShapedPaginationToken(trimmed, components) {
+            let pageItems = (components.queryItems ?? []).filter { $0.name == "page" }
+            guard pageItems.count == 1,
+                  let page = pageItems[0].value?
+                  .trimmingCharacters(in: .whitespacesAndNewlines),
+                  !page.isEmpty,
+                  let bounded = boundedPaginationToken(page)
+            else {
+                return .malformed
+            }
+            return .page(bounded)
         }
-        return boundedPaginationToken(trimmed)
+        guard let bounded = boundedPaginationToken(trimmed) else { return .malformed }
+        return .page(bounded)
 
     case let number as Int:
-        return number > 0 ? String(number) : nil
+        return number > 0 ? .page(String(number)) : .malformed
 
     case let number as NSNumber:
+        // JSON booleans are rejected by the Bool check above; numeric NSNumbers remain.
         let value = number.doubleValue
         guard value.isFinite, value > 0, value.rounded() == value,
               value <= Double(Int64.max)
-        else { return nil }
-        return String(Int64(value))
+        else { return .malformed }
+        return .page(String(Int64(value)))
 
     default:
-        return nil
+        return .malformed
     }
+}
+
+/// Convenience for callers that only need a usable token. Returns nil for both
+/// finished and malformed continuations; prefer `nextPageContinuation` when the
+/// distinction matters.
+public func nextPageToken(_ value: Any?) -> String? {
+    if case let .page(token) = nextPageContinuation(value) {
+        return token
+    }
+    return nil
+}
+
+/// Absolute URLs, rooted paths, and any string carrying a query are treated as
+/// continuation URLs and must expose exactly one nonempty `page` parameter.
+private func isURLShapedPaginationToken(_ trimmed: String, _ components: URLComponents) -> Bool {
+    components.scheme != nil
+        || components.host != nil
+        || trimmed.hasPrefix("/")
+        || trimmed.contains("?")
 }
 
 /// Tracks opaque pagination tokens for one scan. A token may be requested only once;
@@ -91,6 +134,13 @@ public struct RecordIdentityTracker: Sendable {
     }
 
     public mutating func acceptQuestion(_ question: [String: Any]) -> RecordIdentityDisposition {
+        // JSON true/false bridge to Int under Foundation; reject Bool before numeric
+        // identity so a boolean id cannot collide with the real record whose id is 1
+        // (#170, #171).
+        // `is Bool` also matches boolean NSNumbers on Apple platforms.
+        if question["id"] is Bool {
+            return .invalid
+        }
         let identity: String? = if let value = question["id"] as? Int, value > 0 {
             String(value)
         } else if let value = question["id"] as? String,
@@ -107,6 +157,9 @@ public struct RecordIdentityTracker: Sendable {
     }
 
     private func stableIdentity(_ raw: Any?) -> String? {
+        if raw is Bool {
+            return nil
+        }
         if let value = validatedPadID(raw as? String) {
             let unsigned = value.first.map { $0 == "+" || $0 == "-" } == true
                 ? value.dropFirst()
@@ -437,7 +490,7 @@ public func filtersEcho(owner: String?, state: String?, language: String?) -> [S
     return filters
 }
 
-func normalizedFilterValue(_ value: String?) -> String? {
+public func normalizedFilterValue(_ value: String?) -> String? {
     guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else { return nil }
 
     return value
