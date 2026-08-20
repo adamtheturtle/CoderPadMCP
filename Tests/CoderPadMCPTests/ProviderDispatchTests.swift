@@ -693,7 +693,7 @@ struct ProviderDispatchTests {
             screenRegion: "us",
         )
         let provider = CoderPadProvider(
-            accountSet: MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: false),
+            accountSet: try MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: false),
             cache: cache,
             interviewRequest: { _, _, _, _, _, _ in
                 transportFailureResponse(.offline)
@@ -729,7 +729,7 @@ struct ProviderDispatchTests {
             allowWrites: true,
         )
         let provider = CoderPadProvider(
-            accountSet: MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: true),
+            accountSet: try MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: true),
             cache: cache,
             interviewRequest: { _, _, _, _, _, _ in
                 APIResponse(status: 500, body: "should not run")
@@ -758,7 +758,7 @@ struct ProviderDispatchTests {
             screenRegion: "us",
         )
         let provider = CoderPadProvider(
-            accountSet: MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: false),
+            accountSet: try MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: false),
             cache: cache,
             interviewRequest: { _, _, _, _, _, _ in
                 transportFailureResponse(.offline)

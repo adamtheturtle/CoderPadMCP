@@ -13,7 +13,6 @@ public let maximumScreenID = Int(Int32.max)
 public let maxAccountSelectorCharacters = 100
 public let maxAccountSelectorUTF8Bytes = 256
 
-
 /// Returns a numeric server-object identifier only when it can name a real object.
 public func positiveID(_ id: Int?) -> Int? {
     guard let id, id > 0 else { return nil }
