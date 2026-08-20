@@ -178,6 +178,117 @@ struct ProviderDispatchTests {
         #expect(!text.contains("CODERPAD_MCP_ALLOW_WRITES"))
     }
 
+    @Test
+    func `misspelled count filters are rejected`() async throws {
+        let provider = try provider { _, _, _, _, _, _ in
+            APIResponse(status: 200, body: #"{"pads":[],"total":0}"#)
+        }
+        let result = try await provider.callTool("count_pads", arguments: [
+            "owner_email": .string("ada@example.com"),
+        ])
+        #expect(result.isError == true)
+        guard case let .text(text, _, _)? = result.content.first else {
+            Issue.record("Expected a text error result")
+            return
+        }
+        #expect(text.contains("owner_email"))
+    }
+
+    @Test
+    func `offline get_pad marks stale cache fallbacks`() async throws {
+        let cached = try JSONSerialization.data(withJSONObject: [["id": "abc", "title": "Cached"]])
+        let cache = CoderPadMCPCache(
+            load: { _, _, _ in cached },
+            invalidate: { _, _ in },
+        )
+        let account = try MCPAccount(
+            name: "Acme",
+            apiKey: "secret",
+            baseURL: #require(URL(string: "https://app.coderpad.io")),
+            screenAPIKey: nil,
+            screenRegion: "us",
+        )
+        let provider = CoderPadProvider(
+            accountSet: MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: false),
+            cache: cache,
+            interviewRequest: { _, _, _, _, _, _ in
+                transportFailureResponse(.offline)
+            },
+        )
+        let result = try await provider.callTool("get_pad", arguments: ["pad": .string("abc")])
+        #expect(result.isError != true)
+        guard case let .text(text, _, _)? = result.content.first else {
+            Issue.record("Expected a text result")
+            return
+        }
+        #expect(text.contains("\"_stale\""))
+        #expect(text.contains("\"_cache_fallback\""))
+        #expect(text.contains("offline"))
+    }
+
+    @Test
+    func `dry-run writes do not invalidate caches`() async throws {
+        final class InvalidateProbe: @unchecked Sendable {
+            var count = 0
+        }
+        let probe = InvalidateProbe()
+        let cache = CoderPadMCPCache(
+            load: { _, _, _ in nil },
+            invalidate: { _, _ in probe.count += 1 },
+        )
+        let account = try MCPAccount(
+            name: "Acme",
+            apiKey: "secret",
+            baseURL: #require(URL(string: "https://app.coderpad.io")),
+            screenAPIKey: nil,
+            screenRegion: "us",
+            allowWrites: true,
+        )
+        let provider = CoderPadProvider(
+            accountSet: MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: true),
+            cache: cache,
+            interviewRequest: { _, _, _, _, _, _ in
+                APIResponse(status: 500, body: "should not run")
+            },
+        )
+        let result = try await provider.callTool("create_pad", arguments: [
+            "title": .string("Preview"),
+            "dry_run": .bool(true),
+        ])
+        #expect(result.isError != true)
+        #expect(probe.count == 0)
+    }
+
+    @Test
+    func `oversized cache payloads are ignored`() async throws {
+        let oversized = Data(repeating: 0x61, count: maxCoderPadMCPCacheBytes + 1)
+        let cache = CoderPadMCPCache(
+            load: { _, _, _ in oversized },
+            invalidate: { _, _ in },
+        )
+        let account = try MCPAccount(
+            name: "Acme",
+            apiKey: "secret",
+            baseURL: #require(URL(string: "https://app.coderpad.io")),
+            screenAPIKey: nil,
+            screenRegion: "us",
+        )
+        let provider = CoderPadProvider(
+            accountSet: MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: false),
+            cache: cache,
+            interviewRequest: { _, _, _, _, _, _ in
+                transportFailureResponse(.offline)
+            },
+        )
+        let result = try await provider.callTool("get_pad", arguments: ["pad": .string("abc")])
+        #expect(result.isError == true)
+        guard case let .text(text, _, _)? = result.content.first else {
+            Issue.record("Expected a text error result")
+            return
+        }
+        #expect(text.contains("Transport failure: offline"))
+    }
+
     private func provider(request: @escaping InterviewRequest) throws -> CoderPadProvider {
         let account = try MCPAccount(
             name: "Acme",

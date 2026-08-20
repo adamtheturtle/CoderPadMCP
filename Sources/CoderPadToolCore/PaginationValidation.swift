@@ -13,8 +13,8 @@
 /// dataset, but small enough that pagination arithmetic can never overflow.
 public let maxPaginationPage = 100_000
 public let maxPaginationStart = 10_000_000
-/// CoderPad Screen v1.1 documents 50 as the maximum tests-page size.
-public let maxPaginationLimit = 50
+/// Matches `CoderPadKit.ScreenClient.maximumPageSize` for Screen list requests.
+public let maxPaginationLimit = 500
 
 public func pageValidationError(_ page: Int?) -> String? {
     guard let page else { return nil }

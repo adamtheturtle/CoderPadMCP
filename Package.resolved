@@ -1,5 +1,5 @@
 {
-  "originHash" : "f7ec231c0562432adab0b3724d284809a87dfd49e4e20fe868507bf145239c43",
+  "originHash" : "4754026c6a02e9ea1bef46bfa9af6551e5fd313ef9b3abc5688220f574afc1f5",
   "pins" : [
     {
       "identity" : "coderpadkit",
@@ -24,8 +24,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/adamtheturtle/MCPKit.git",
       "state" : {
-        "revision" : "e402d903599d2e3b6c3e6aa9587215f994906373",
-        "version" : "0.5.0"
+        "revision" : "2829ab57a7d672facd80f390371a0820ef028102",
+        "version" : "0.5.1"
       }
     },
     {

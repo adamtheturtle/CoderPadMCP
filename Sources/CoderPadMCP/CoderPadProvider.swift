@@ -77,6 +77,7 @@ private func cachedRecords(
     cache: CoderPadMCPCache?,
 ) -> [[String: Any]]? {
     guard let data = cache?.load(kind, account.id, requireFresh),
+          data.count <= maxCoderPadMCPCacheBytes,
           let records = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]
     else {
         return nil
@@ -102,7 +103,11 @@ private func getRecord(
         .first { String(describing: $0[idKey] ?? "") == id || String(describing: $0["slug"] ?? "") == id }
     guard let record else { return toolResult(response) }
 
-    return jsonResult(record)
+    var payload = record
+    payload["_stale"] = true
+    payload["_cache_fallback"] = true
+    payload["_transport_failure"] = response.body
+    return jsonResult(payload)
 }
 
 private func invalidating(
@@ -110,11 +115,25 @@ private func invalidating(
     kind: CoderPadMCPRecordKind,
     account: MCPAccount,
     cache: CoderPadMCPCache?,
+    dryRun: Bool,
 ) async -> CallTool.Result {
-    if result.isError != true {
+    if result.isError != true, !dryRun {
         await cache?.invalidate(kind, account.id)
     }
     return result
+}
+
+private func unknownArgumentError(
+    _ arguments: [String: Value]?,
+    allowed: Set<String>,
+) -> String? {
+    guard let arguments else { return nil }
+    let unknown = arguments.keys.filter { !allowed.contains($0) }.sorted()
+    guard let first = unknown.first else { return nil }
+    if unknown.count == 1 {
+        return "Unknown argument \"\(first)\"."
+    }
+    return "Unknown arguments: \(unknown.map { "\"\($0)\"" }.joined(separator: ", "))."
 }
 
 // MARK: - Server
@@ -438,11 +457,23 @@ private func dispatchScreenOrWrite(
 
     switch name {
     case "screen_list_campaigns":
+        if let error = unknownArgumentError(arguments, allowed: [mcpAccountArgument]) {
+            return errorResult(error)
+        }
         return try await toolResult(screenGet("/campaigns", account: account))
 
     case "screen_list_tests":
-        if let campaign = strictIntArgument(arguments, "campaignId"), positiveID(campaign) == nil {
-            return errorResult("campaignId must be a positive integer.")
+        if let error = unknownArgumentError(
+            arguments,
+            allowed: [mcpAccountArgument, "campaignId", "candidateEmail", "start", "limit"],
+        ) {
+            return errorResult(error)
+        }
+        if let campaign = strictIntArgument(arguments, "campaignId"), positiveScreenID(campaign) == nil {
+            return errorResult("campaignId must be a positive int32.")
+        }
+        if arguments?["campaignId"] != nil, strictIntArgument(arguments, "campaignId") == nil {
+            return errorResult("campaignId must be a positive int32.")
         }
         if let error = screenPaginationValidationError(
             start: strictIntArgument(arguments, "start"),
@@ -462,15 +493,41 @@ private func dispatchScreenOrWrite(
         ))
 
     case "screen_get_test":
-        guard let test = positiveID(strictIntArgument(arguments, "test")) else {
-            return errorResult("test must be a positive integer.")
+        if let error = unknownArgumentError(arguments, allowed: [mcpAccountArgument, "test"]) {
+            return errorResult(error)
+        }
+        guard let test = positiveScreenID(strictIntArgument(arguments, "test")) else {
+            return errorResult("test must be a positive int32.")
         }
 
-        return try await toolResult(screenGet("/tests/\(test)", account: account))
+        let statusResponse = try await screenGet("/tests/\(test)", account: account)
+        guard statusResponse.ok, isValidJSONObjectOrArray(statusResponse.data) else {
+            return toolResult(statusResponse)
+        }
+        if let message = apiErrorEnvelopeMessage(in: statusResponse.data) {
+            return errorResult(message)
+        }
+        let reportResponse = try await screenGet("/tests/\(test)/report", account: account)
+        guard var object = jsonObject(statusResponse.data) else {
+            return toolResult(statusResponse)
+        }
+        if reportResponse.ok, let report = jsonObject(reportResponse.data) {
+            object["report"] = report
+        } else if reportResponse.ok, isValidJSONObjectOrArray(reportResponse.data),
+                  let reportValue = try? JSONSerialization.jsonObject(with: reportResponse.data)
+        {
+            object["report"] = reportValue
+        } else if reportResponse.status != 404 {
+            object["report_error"] = reportResponse.status == 0
+                ? "Transport failure: \(reportResponse.body)"
+                : sanitizedHTTPErrorMessage(status: reportResponse.status, body: reportResponse.body)
+        }
+        return jsonResult(object)
 
     case "create_pad":
         let result = try await createPad(arguments: arguments, account: account)
-        return await invalidating(result, kind: .pads, account: account, cache: cache)
+        let dryRun = strictDryRunArgument(arguments) == .value(true)
+        return await invalidating(result, kind: .pads, account: account, cache: cache, dryRun: dryRun)
 
     case "update_pad":
         guard let pad = validatedPadID(stringArgument(arguments, "pad")) else {
@@ -478,13 +535,15 @@ private func dispatchScreenOrWrite(
         }
 
         let result = try await updatePad(id: pad, arguments: arguments, account: account)
-        return await invalidating(result, kind: .pads, account: account, cache: cache)
+        let dryRun = strictDryRunArgument(arguments) == .value(true)
+        return await invalidating(result, kind: .pads, account: account, cache: cache, dryRun: dryRun)
 
     case "create_question":
         guard let title = optionalString(arguments, "title") else { return missingArgument("title") }
 
         let result = try await createQuestion(title: title, arguments: arguments, account: account)
-        return await invalidating(result, kind: .questions, account: account, cache: cache)
+        let dryRun = strictDryRunArgument(arguments) == .value(true)
+        return await invalidating(result, kind: .questions, account: account, cache: cache, dryRun: dryRun)
 
     case "update_question":
         guard let question = positiveID(strictIntArgument(arguments, "question")) else {
@@ -492,7 +551,8 @@ private func dispatchScreenOrWrite(
         }
 
         let result = try await updateQuestion(id: question, arguments: arguments, account: account)
-        return await invalidating(result, kind: .questions, account: account, cache: cache)
+        let dryRun = strictDryRunArgument(arguments) == .value(true)
+        return await invalidating(result, kind: .questions, account: account, cache: cache, dryRun: dryRun)
 
     default:
         return CallTool.Result(
@@ -766,6 +826,12 @@ private func countPads(
     account: MCPAccount,
     cache: CoderPadMCPCache?,
 ) async throws -> CallTool.Result {
+    if let error = unknownArgumentError(
+        arguments,
+        allowed: [mcpAccountArgument, "owner", "state", "language", "created_after", "created_before"],
+    ) {
+        return errorResult(error)
+    }
     let owner = stringArgument(arguments, "owner")
     let state = stringArgument(arguments, "state")
     let language = stringArgument(arguments, "language")
@@ -774,14 +840,27 @@ private func countPads(
     if let error = dateBoundValidationError(after: after, before: before) {
         return errorResult(error)
     }
+    let dateFilterActive = normalizedFilterValue(after) != nil || normalizedFilterValue(before) != nil
 
     // Built once for the whole list rather than re-normalizing the filter
     // values for every row (#2453).
     let matcher = PadMatcher(owner: owner, state: state, language: language)
     var matched = 0
+    var unusableCreatedAt = 0
     let scan = try await fetchAllPads(account: account, cache: cache) { pads in
-        for pad in pads where matcher.matches(pad) && withinDateRange(pad, after: after, before: before) {
-            matched += 1
+        for pad in pads where matcher.matches(pad) {
+            if dateFilterActive {
+                switch createdAtPresence(pad) {
+                case .absent, .malformed:
+                    unusableCreatedAt += 1
+                    continue
+                case .present:
+                    break
+                }
+            }
+            if withinDateRange(pad, after: after, before: before) {
+                matched += 1
+            }
         }
     }
     if let error = scan.error {
@@ -811,6 +890,10 @@ private func countPads(
     if !filters.isEmpty {
         result["filters"] = filters
     }
+    if dateFilterActive, unusableCreatedAt > 0 {
+        result["unusable_created_at"] = unusableCreatedAt
+        result["date_filter_incomplete"] = true
+    }
     if scan.truncated {
         result["note"] = "Hit the internal page cap (\(maxPadPagesToFetch) pages); the count covers only the pads scanned."
     }
@@ -824,6 +907,14 @@ private func aggregatePadsTool(
     account: MCPAccount,
     cache: CoderPadMCPCache?,
 ) async throws -> CallTool.Result {
+    if let error = unknownArgumentError(
+        arguments,
+        allowed: [
+            mcpAccountArgument, "group_by", "owner", "state", "language", "created_after", "created_before",
+        ],
+    ) {
+        return errorResult(error)
+    }
     guard let field = aggregateField(for: groupBy) else {
         return CallTool.Result(
             content: [.text(
@@ -842,19 +933,30 @@ private func aggregatePadsTool(
     if let error = dateBoundValidationError(after: after, before: before) {
         return errorResult(error)
     }
+    let dateFilterActive = normalizedFilterValue(after) != nil || normalizedFilterValue(before) != nil
 
     // Built once for the whole list rather than re-normalizing the filter
     // values for every row (#2453).
     let matcher = PadMatcher(owner: owner, state: state, language: language)
     var matched = 0
-    var counts: [String: Int] = [:]
+    var unusableCreatedAt = 0
+    var accumulation = AggregateAccumulation()
     let scan = try await fetchAllPads(account: account, cache: cache) { pads in
-        let page = pads.filter {
-            matcher.matches($0)
-                && withinDateRange($0, after: after, before: before)
+        let page = pads.filter { pad in
+            guard matcher.matches(pad) else { return false }
+            if dateFilterActive {
+                switch createdAtPresence(pad) {
+                case .absent, .malformed:
+                    unusableCreatedAt += 1
+                    return false
+                case .present:
+                    break
+                }
+            }
+            return withinDateRange(pad, after: after, before: before)
         }
         matched += page.count
-        accumulateCounts(&counts, pads: page, field: field)
+        accumulateCounts(&accumulation, pads: page, field: field)
     }
     if let error = scan.error {
         return toolResult(error)
@@ -869,14 +971,14 @@ private func aggregatePadsTool(
         return errorResult(message)
     }
 
-    let capped = topGroups(counts, limit: maxAggregateGroups)
+    let capped = topGroups(accumulation.counts, limit: maxAggregateGroups)
     let groups: [[String: Any]] = capped.map { ["value": $0.value, "count": $0.count] }
 
     var result: [String: Any] = [
         "group_by": field,
         "matched": matched,
         "scanned": scan.scanned,
-        "distinct_groups": counts.count,
+        "distinct_groups": accumulation.distinctGroups,
         "groups": groups,
         "pages_fetched": scan.pagesFetched,
         "truncated": scan.truncated,
@@ -886,9 +988,16 @@ private func aggregatePadsTool(
     if !filters.isEmpty {
         result["filters"] = filters
     }
-    if counts.count > capped.count {
+    if accumulation.counts[aggregateOverflowGroup] != nil {
+        result["distinct_groups_includes_overflow"] = true
+    }
+    if dateFilterActive, unusableCreatedAt > 0 {
+        result["unusable_created_at"] = unusableCreatedAt
+        result["date_filter_incomplete"] = true
+    }
+    if accumulation.counts.count > capped.count {
         result["groups_truncated"] = true
-        result["note"] = "Showing the top \(capped.count) of \(counts.count) groups by count."
+        result["note"] = "Showing the top \(capped.count) of \(accumulation.counts.count) groups by count."
     }
     if scan.truncated {
         result["page_cap_note"] = "Hit the internal page cap (\(maxPadPagesToFetch) pages); the aggregation covers only the pads scanned."
@@ -909,6 +1018,9 @@ private func listPads(arguments: [String: Value]?, account: MCPAccount) async th
 }
 
 private func listPadsCompact(arguments: [String: Value]?, account: MCPAccount) async throws -> CallTool.Result {
+    if let error = unknownArgumentError(arguments, allowed: [mcpAccountArgument, "page", "sort"]) {
+        return errorResult(error)
+    }
     if let error = pageValidationError(strictIntArgument(arguments, "page")) {
         return errorResult(error)
     }
@@ -922,13 +1034,31 @@ private func listPadsCompact(arguments: [String: Value]?, account: MCPAccount) a
         return errorResult(invalidListResponseMessage("/api/pads/", expecting: "pads", body: response.body))
     }
 
-    let compact = compactPads(pads)
+    var identities = RecordIdentityTracker()
+    var valid: [[String: Any]] = []
+    var malformed = 0
+    for pad in pads {
+        switch identities.acceptPad(pad) {
+        case .accepted:
+            valid.append(pad)
+        case .duplicate:
+            continue
+        case .invalid:
+            malformed += 1
+        }
+    }
+
+    let compact = compactPads(valid)
 
     var result: [String: Any] = ["pads": compact, "count": compact.count]
-    if let next = object["next_page"], !(next is NSNull) {
+    if malformed > 0 {
+        result["malformed_records"] = malformed
+        result["incomplete"] = true
+    }
+    if let next = compactPaginationMetadata(object["next_page"]) {
         result["next_page"] = next
     }
-    if let total = object["total"], !(total is NSNull) {
+    if let total = compactPaginationMetadata(object["total"]) {
         result["total"] = total
     }
 
@@ -1021,6 +1151,14 @@ private func countQuestions(
     account: MCPAccount,
     cache: CoderPadMCPCache?,
 ) async throws -> CallTool.Result {
+    if let error = unknownArgumentError(
+        arguments,
+        allowed: [
+            mcpAccountArgument, "owner", "author", "language", "type", "created_after", "created_before",
+        ],
+    ) {
+        return errorResult(error)
+    }
     let owner = stringArgument(arguments, "owner")
     let author = stringArgument(arguments, "author")
     let language = stringArgument(arguments, "language")
@@ -1030,16 +1168,27 @@ private func countQuestions(
     if let error = dateBoundValidationError(after: after, before: before) {
         return errorResult(error)
     }
+    let dateFilterActive = normalizedFilterValue(after) != nil || normalizedFilterValue(before) != nil
 
     // Built once for the whole list rather than re-normalizing the filter
     // values for every row (#2452).
     let matcher = QuestionMatcher(owner: owner, author: author, language: language, type: type)
     var matched = 0
+    var unusableCreatedAt = 0
     let scan = try await fetchAllQuestions(account: account, cache: cache) { questions in
-        for question in questions
-            where matcher.matches(question) && withinDateRange(question, after: after, before: before)
-        {
-            matched += 1
+        for question in questions where matcher.matches(question) {
+            if dateFilterActive {
+                switch createdAtPresence(question) {
+                case .absent, .malformed:
+                    unusableCreatedAt += 1
+                    continue
+                case .present:
+                    break
+                }
+            }
+            if withinDateRange(question, after: after, before: before) {
+                matched += 1
+            }
         }
     }
     if let error = scan.error {
@@ -1069,6 +1218,10 @@ private func countQuestions(
     if !filters.isEmpty {
         result["filters"] = filters
     }
+    if dateFilterActive, unusableCreatedAt > 0 {
+        result["unusable_created_at"] = unusableCreatedAt
+        result["date_filter_incomplete"] = true
+    }
     if scan.truncated {
         result["note"] = "Hit the internal page cap (\(maxPadPagesToFetch) pages); the count covers only the questions scanned."
     }
@@ -1082,6 +1235,15 @@ private func aggregateQuestionsTool(
     account: MCPAccount,
     cache: CoderPadMCPCache?,
 ) async throws -> CallTool.Result {
+    if let error = unknownArgumentError(
+        arguments,
+        allowed: [
+            mcpAccountArgument, "group_by", "owner", "author", "language", "type",
+            "created_after", "created_before",
+        ],
+    ) {
+        return errorResult(error)
+    }
     guard let field = questionAggregateField(for: groupBy) else {
         return CallTool.Result(
             content: [.text(
@@ -1101,19 +1263,30 @@ private func aggregateQuestionsTool(
     if let error = dateBoundValidationError(after: after, before: before) {
         return errorResult(error)
     }
+    let dateFilterActive = normalizedFilterValue(after) != nil || normalizedFilterValue(before) != nil
 
     // Built once for the whole list rather than re-normalizing the filter
     // values for every row (#2452).
     let matcher = QuestionMatcher(owner: owner, author: author, language: language, type: type)
     var matched = 0
-    var counts: [String: Int] = [:]
+    var unusableCreatedAt = 0
+    var accumulation = AggregateAccumulation()
     let scan = try await fetchAllQuestions(account: account, cache: cache) { questions in
-        let page = questions.filter {
-            matcher.matches($0)
-                && withinDateRange($0, after: after, before: before)
+        let page = questions.filter { question in
+            guard matcher.matches(question) else { return false }
+            if dateFilterActive {
+                switch createdAtPresence(question) {
+                case .absent, .malformed:
+                    unusableCreatedAt += 1
+                    return false
+                case .present:
+                    break
+                }
+            }
+            return withinDateRange(question, after: after, before: before)
         }
         matched += page.count
-        accumulateCounts(&counts, pads: page, field: field)
+        accumulateCounts(&accumulation, pads: page, field: field)
     }
     if let error = scan.error {
         return toolResult(error)
@@ -1128,14 +1301,14 @@ private func aggregateQuestionsTool(
         return errorResult(message)
     }
 
-    let capped = topGroups(counts, limit: maxAggregateGroups)
+    let capped = topGroups(accumulation.counts, limit: maxAggregateGroups)
     let groups: [[String: Any]] = capped.map { ["value": $0.value, "count": $0.count] }
 
     var result: [String: Any] = [
         "group_by": field,
         "matched": matched,
         "scanned": scan.scanned,
-        "distinct_groups": counts.count,
+        "distinct_groups": accumulation.distinctGroups,
         "groups": groups,
         "pages_fetched": scan.pagesFetched,
         "truncated": scan.truncated,
@@ -1145,9 +1318,16 @@ private func aggregateQuestionsTool(
     if !filters.isEmpty {
         result["filters"] = filters
     }
-    if counts.count > capped.count {
+    if accumulation.counts[aggregateOverflowGroup] != nil {
+        result["distinct_groups_includes_overflow"] = true
+    }
+    if dateFilterActive, unusableCreatedAt > 0 {
+        result["unusable_created_at"] = unusableCreatedAt
+        result["date_filter_incomplete"] = true
+    }
+    if accumulation.counts.count > capped.count {
         result["groups_truncated"] = true
-        result["note"] = "Showing the top \(capped.count) of \(counts.count) groups by count."
+        result["note"] = "Showing the top \(capped.count) of \(accumulation.counts.count) groups by count."
     }
     if scan.truncated {
         result["page_cap_note"] = "Hit the internal page cap (\(maxPadPagesToFetch) pages); the aggregation covers only the questions scanned."
@@ -1168,6 +1348,9 @@ private func listQuestions(arguments: [String: Value]?, account: MCPAccount) asy
 }
 
 private func listQuestionsCompact(arguments: [String: Value]?, account: MCPAccount) async throws -> CallTool.Result {
+    if let error = unknownArgumentError(arguments, allowed: [mcpAccountArgument, "page", "sort"]) {
+        return errorResult(error)
+    }
     if let error = pageValidationError(strictIntArgument(arguments, "page")) {
         return errorResult(error)
     }
@@ -1181,13 +1364,31 @@ private func listQuestionsCompact(arguments: [String: Value]?, account: MCPAccou
         return errorResult(invalidListResponseMessage("/api/questions/", expecting: "questions", body: response.body))
     }
 
-    let compact = compactQuestions(questions)
+    var identities = RecordIdentityTracker()
+    var valid: [[String: Any]] = []
+    var malformed = 0
+    for question in questions {
+        switch identities.acceptQuestion(question) {
+        case .accepted:
+            valid.append(question)
+        case .duplicate:
+            continue
+        case .invalid:
+            malformed += 1
+        }
+    }
+
+    let compact = compactQuestions(valid)
 
     var result: [String: Any] = ["questions": compact, "count": compact.count]
-    if let next = object["next_page"], !(next is NSNull) {
+    if malformed > 0 {
+        result["malformed_records"] = malformed
+        result["incomplete"] = true
+    }
+    if let next = compactPaginationMetadata(object["next_page"]) {
         result["next_page"] = next
     }
-    if let total = object["total"], !(total is NSNull) {
+    if let total = compactPaginationMetadata(object["total"]) {
         result["total"] = total
     }
 
