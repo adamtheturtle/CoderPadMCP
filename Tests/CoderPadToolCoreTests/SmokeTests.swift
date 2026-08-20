@@ -79,6 +79,28 @@ import Testing
     #expect(missing == .invalid)
 }
 
+@Test func `pad record tracker rejects boolean identities without treating them as 1`() {
+    var tracker = RecordIdentityTracker()
+    let truthy = tracker.acceptPad(["id": true])
+    let real = tracker.acceptPad(["id": 1])
+    let falsy = tracker.acceptPad(["id": false])
+    let slugFallback = tracker.acceptPad(["id": true, "slug": "pad-slug"])
+    #expect(truthy == .invalid)
+    #expect(real == .accepted)
+    #expect(falsy == .invalid)
+    #expect(slugFallback == .accepted)
+}
+
+@Test func `question record tracker rejects boolean identities before colliding with 1`() {
+    var tracker = RecordIdentityTracker()
+    let truthy = tracker.acceptQuestion(["id": true])
+    let real = tracker.acceptQuestion(["id": 1])
+    let falsy = tracker.acceptQuestion(["id": false])
+    #expect(truthy == .invalid)
+    #expect(real == .accepted)
+    #expect(falsy == .invalid)
+}
+
 @Test func `aggregate fields ignore surrounding whitespace`() {
     #expect(aggregateField(for: " owner ") == "owner_email")
     #expect(questionAggregateField(for: "\n language\t") == "language")

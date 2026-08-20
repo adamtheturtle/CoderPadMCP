@@ -220,11 +220,16 @@ struct ArgumentTests {
         #expect(normalizedPagingSort(nil) == nil)
         #expect(normalizedPagingSort("created_at,asc") == "created_at,asc")
         #expect(normalizedPagingSort("created_at,desc") == "created_at,desc")
-        #expect(normalizedPagingSort("created_at") == "created_at,asc")
+        #expect(normalizedPagingSort("created_at") == "created_at,desc")
+        #expect(normalizedPagingSort("updated_at") == "updated_at,desc")
         #expect(normalizedPagingSort("-created_at") == "created_at,desc")
+        #expect(normalizedPagingSort("title") == nil)
+        #expect(normalizedPagingSort("foo") == nil)
         #expect(pagingSortValidationError(nil) == nil)
         #expect(pagingSortValidationError("-created_at") == nil)
         #expect(pagingSortValidationError("created_at") == nil)
+        #expect(pagingSortValidationError("updated_at,asc") == nil)
+        #expect(pagingSortValidationError("title") != nil)
         #expect(pagingSortValidationError("created_at,descending") != nil)
         #expect(pagingSortValidationError("created-at,desc") != nil)
         #expect(pagingSortValidationError("") != nil)
@@ -409,20 +414,34 @@ struct ToolCatalogTests {
 @Suite("Paging")
 struct PagingTests {
     @Test
-    func `nextPageToken reads continuation URLs strings and ints, nil when absent or empty`() {
-        #expect(nextPageToken(
+    func `nextPageContinuation distinguishes finished malformed and usable tokens`() {
+        #expect(nextPageContinuation(
             "https://app.coderpad.io/api/pads?sort=updated_at,desc&page=2",
-        ) == "2")
-        #expect(nextPageToken("/api/questions/?page=3") == "3")
-        #expect(nextPageToken("abc") == "abc")
-        #expect(nextPageToken(2) == "2")
-        #expect(nextPageToken(0) == nil)
-        #expect(nextPageToken(-1) == nil)
-        #expect(nextPageToken(NSNumber(value: 2.5)) == nil)
-        #expect(nextPageToken(String(repeating: "a", count: maxPaginationTokenBytes + 1)) == nil)
-        #expect(nextPageToken("") == nil)
-        #expect(nextPageToken(nil) == nil)
-        #expect(nextPageToken(NSNull()) == nil)
+        ) == .page("2"))
+        #expect(nextPageContinuation("/api/questions/?page=3") == .page("3"))
+        #expect(nextPageContinuation("abc") == .page("abc"))
+        #expect(nextPageContinuation(2) == .page("2"))
+        #expect(nextPageContinuation(0) == .malformed)
+        #expect(nextPageContinuation(-1) == .malformed)
+        #expect(nextPageContinuation(true) == .malformed)
+        #expect(nextPageContinuation(false) == .malformed)
+        #expect(nextPageContinuation([1, 2]) == .malformed)
+        #expect(nextPageContinuation(["page": 2]) == .malformed)
+        #expect(nextPageContinuation(NSNumber(value: 2.5)) == .malformed)
+        #expect(nextPageContinuation(String(repeating: "a", count: maxPaginationTokenBytes + 1)) == .malformed)
+        #expect(nextPageContinuation("") == .finished)
+        #expect(nextPageContinuation(nil) == .finished)
+        #expect(nextPageContinuation(NSNull()) == .finished)
+    }
+
+    @Test
+    func `URL-shaped continuations require exactly one nonempty page parameter`() {
+        #expect(nextPageContinuation("https://app.coderpad.io/api/pads") == .malformed)
+        #expect(nextPageContinuation("/api/pads/?sort=created_at,desc") == .malformed)
+        #expect(nextPageContinuation("https://app.coderpad.io/api/pads?page=2&page=3") == .malformed)
+        #expect(nextPageContinuation("https://app.coderpad.io/api/pads?page=&sort=desc") == .malformed)
+        #expect(nextPageContinuation("/api/pads/?page=2&page=2") == .malformed)
+        #expect(nextPageToken("https://app.coderpad.io/api/pads?page=4") == "4")
     }
 }
 
