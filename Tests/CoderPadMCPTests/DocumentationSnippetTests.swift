@@ -18,7 +18,7 @@ struct DocumentationSnippetTests {
         let account = try MCPAccount(
             name: "Acme",
             apiKey: apiKey,
-            baseURL: URL(string: "https://app.coderpad.io")!,
+            baseURL: #require(URL(string: "https://app.coderpad.io")),
             screenAPIKey: nil,
             screenRegion: "us",
         )

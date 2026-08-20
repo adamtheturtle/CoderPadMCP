@@ -48,8 +48,8 @@ private actor RequestCounter {
 struct ProviderDispatchTests {
     @Test
     func `unknown tools are rejected before account resolution`() async throws {
-        let provider = CoderPadProvider(
-            accountSet: try MCPAccountSet(accounts: [], defaultName: "", allowWrites: false),
+        let provider = try CoderPadProvider(
+            accountSet: MCPAccountSet(accounts: [], defaultName: "", allowWrites: false),
         )
 
         let result = try await provider.callTool("does_not_exist", arguments: nil)
@@ -176,8 +176,8 @@ struct ProviderDispatchTests {
             screenAPIKey: "screen-secret",
             screenRegion: "us",
         )
-        let provider = CoderPadProvider(
-            accountSet: try MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: false),
+        let provider = try CoderPadProvider(
+            accountSet: MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: false),
             interviewRequest: { _, _, _, _, _, _ in
                 APIResponse(status: 500, body: "should not run")
             },
@@ -281,8 +281,8 @@ struct ProviderDispatchTests {
             screenAPIKey: nil,
             screenRegion: "us",
         )
-        let provider = CoderPadProvider(
-            accountSet: try MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: false),
+        let provider = try CoderPadProvider(
+            accountSet: MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: false),
             cache: cache,
             interviewRequest: { _, _, _, _, _, _ in
                 APIResponse(status: 500, body: "should not run")
@@ -313,8 +313,8 @@ struct ProviderDispatchTests {
             screenAPIKey: nil,
             screenRegion: "us",
         )
-        let provider = CoderPadProvider(
-            accountSet: try MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: false),
+        let provider = try CoderPadProvider(
+            accountSet: MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: false),
             cache: cache,
             interviewRequest: { _, _, _, _, _, _ in
                 APIResponse(status: 500, body: "should not run")
@@ -365,8 +365,8 @@ struct ProviderDispatchTests {
             screenRegion: "us",
             allowWrites: true,
         )
-        let provider = CoderPadProvider(
-            accountSet: try MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: false),
+        let provider = try CoderPadProvider(
+            accountSet: MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: false),
             interviewRequest: { _, _, _, _, _, _ in
                 APIResponse(status: 500, body: "should not run")
             },
@@ -405,8 +405,8 @@ struct ProviderDispatchTests {
             screenRegion: "us",
             allowWrites: true,
         )
-        let provider = CoderPadProvider(
-            accountSet: try MCPAccountSet(
+        let provider = try CoderPadProvider(
+            accountSet: MCPAccountSet(
                 accounts: [denied, allowed],
                 defaultName: denied.name,
                 allowWrites: true,
@@ -528,8 +528,8 @@ struct ProviderDispatchTests {
             id: "screen", name: "Screen", apiKey: "b", baseURL: https,
             screenAPIKey: "screen-key", screenRegion: "us",
         )
-        let provider = CoderPadProvider(
-            accountSet: try MCPAccountSet(
+        let provider = try CoderPadProvider(
+            accountSet: MCPAccountSet(
                 accounts: [plain, screen],
                 defaultName: plain.id,
                 allowWrites: false,
@@ -563,8 +563,8 @@ struct ProviderDispatchTests {
             id: "allowed", name: "Allowed", apiKey: "b", baseURL: https,
             screenAPIKey: nil, screenRegion: "us", allowWrites: true,
         )
-        let provider = CoderPadProvider(
-            accountSet: try MCPAccountSet(
+        let provider = try CoderPadProvider(
+            accountSet: MCPAccountSet(
                 accounts: [denied, allowed],
                 defaultName: denied.id,
                 allowWrites: true,
@@ -610,7 +610,7 @@ struct ProviderDispatchTests {
         let provider = try provider { _, _, _, _, _, _ in
             APIResponse(status: 500, body: "unused")
         }
-        let huge = String(repeating: "x", count: 50_000)
+        let huge = String(repeating: "x", count: 50000)
         let result = try await provider.callTool("whoami", arguments: ["account": .string(huge)])
         #expect(result.isError == true)
         guard case let .text(text, _, _)? = result.content.first else {
@@ -620,7 +620,6 @@ struct ProviderDispatchTests {
         #expect(text.utf8.count < huge.utf8.count)
         #expect(text.contains("truncated") || !text.contains(String(repeating: "x", count: 1000)))
     }
-
 
     private func requiredKeys(of tool: Tool) -> [String] {
         guard case let .object(schema) = tool.inputSchema,
@@ -645,8 +644,8 @@ struct ProviderDispatchTests {
             screenRegion: "us",
             allowWrites: true,
         )
-        return CoderPadProvider(
-            accountSet: try MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: true),
+        return try CoderPadProvider(
+            accountSet: MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: true),
             interviewRequest: request,
         )
     }
@@ -692,8 +691,8 @@ struct ProviderDispatchTests {
             screenAPIKey: nil,
             screenRegion: "us",
         )
-        let provider = CoderPadProvider(
-            accountSet: try MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: false),
+        let provider = try CoderPadProvider(
+            accountSet: MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: false),
             cache: cache,
             interviewRequest: { _, _, _, _, _, _ in
                 transportFailureResponse(.offline)
@@ -728,8 +727,8 @@ struct ProviderDispatchTests {
             screenRegion: "us",
             allowWrites: true,
         )
-        let provider = CoderPadProvider(
-            accountSet: try MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: true),
+        let provider = try CoderPadProvider(
+            accountSet: MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: true),
             cache: cache,
             interviewRequest: { _, _, _, _, _, _ in
                 APIResponse(status: 500, body: "should not run")
@@ -757,8 +756,8 @@ struct ProviderDispatchTests {
             screenAPIKey: nil,
             screenRegion: "us",
         )
-        let provider = CoderPadProvider(
-            accountSet: try MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: false),
+        let provider = try CoderPadProvider(
+            accountSet: MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: false),
             cache: cache,
             interviewRequest: { _, _, _, _, _, _ in
                 transportFailureResponse(.offline)
@@ -781,8 +780,8 @@ struct ProviderDispatchTests {
             screenAPIKey: nil,
             screenRegion: "us",
         )
-        return CoderPadProvider(
-            accountSet: try MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: false),
+        return try CoderPadProvider(
+            accountSet: MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: false),
             interviewRequest: request,
         )
     }
