@@ -17,7 +17,7 @@ private let maxPadPagesToFetch = 500
 
 /// At most this many groups are returned by aggregate_pads; if there are more, the top
 /// ones by count are returned and the result flags that it was truncated.
-private let maxAggregateGroups = 200
+private let maxReturnedAggregateGroups = 200
 
 /// The accumulated result of paging the whole pad list internally. Only the totals are
 /// kept: the pages themselves are handed to the caller's tally as they arrive (#2121).
@@ -215,6 +215,12 @@ func countPads(
     account: MCPAccount,
     cache: CoderPadMCPCache?,
 ) async throws -> CallTool.Result {
+    if let error = unknownArgumentError(
+        arguments,
+        allowed: [mcpAccountArgument, "owner", "state", "language", "created_after", "created_before"],
+    ) {
+        return errorResult(error)
+    }
     if let error = padFilterTypeError(arguments) {
         return errorResult(error)
     }
@@ -226,6 +232,7 @@ func countPads(
     if let error = dateBoundValidationError(after: after, before: before) {
         return errorResult(error)
     }
+    let dateFilterActive = normalizedFilterValue(after) != nil || normalizedFilterValue(before) != nil
 
     if !hasActivePadFilters(owner: owner, state: state, language: language, after: after, before: before) {
         if let shortCircuit = try await unfilteredCountFromFirstPage(
@@ -243,9 +250,21 @@ func countPads(
     // values for every row (#2453).
     let matcher = PadMatcher(owner: owner, state: state, language: language)
     var matched = 0
+    var unusableCreatedAt = 0
     let scan = try await fetchAllPads(account: account, cache: cache) { pads in
-        for pad in pads where matcher.matches(pad) && withinDateRange(pad, after: after, before: before) {
-            matched += 1
+        for pad in pads where matcher.matches(pad) {
+            if dateFilterActive {
+                switch createdAtPresence(pad) {
+                case .absent, .malformed:
+                    unusableCreatedAt += 1
+                    continue
+                case .present:
+                    break
+                }
+            }
+            if withinDateRange(pad, after: after, before: before) {
+                matched += 1
+            }
         }
     }
     if let error = scan.error {
@@ -274,6 +293,10 @@ func countPads(
     addDateFilters(&filters, after: after, before: before)
     if !filters.isEmpty {
         result["filters"] = filters
+    }
+    if dateFilterActive, unusableCreatedAt > 0 {
+        result["unusable_created_at"] = unusableCreatedAt
+        result["date_filter_incomplete"] = true
     }
     if scan.truncated {
         result["note"] = "Hit the internal page cap (\(maxPadPagesToFetch) pages); the count covers only the pads scanned."
@@ -351,6 +374,13 @@ func aggregatePadsTool(
     account: MCPAccount,
     cache: CoderPadMCPCache?,
 ) async throws -> CallTool.Result {
+    if let error = unknownArgumentError(
+        arguments,
+        allowed: [mcpAccountArgument, "group_by", "owner", "state", "language", "created_after", "created_before"],
+    ) {
+        return errorResult(error)
+    }
+
     guard let field = aggregateField(for: groupBy) else {
         return CallTool.Result(
             content: [.text(
@@ -376,15 +406,26 @@ func aggregatePadsTool(
     // Built once for the whole list rather than re-normalizing the filter
     // values for every row (#2453).
     let matcher = PadMatcher(owner: owner, state: state, language: language)
+    let dateFilterActive = normalizedFilterValue(after) != nil || normalizedFilterValue(before) != nil
     var matched = 0
-    var counts: [String: Int] = [:]
+    var unusableCreatedAt = 0
+    var accumulation = AggregateAccumulation()
     let scan = try await fetchAllPads(account: account, cache: cache) { pads in
-        let page = pads.filter {
-            matcher.matches($0)
-                && withinDateRange($0, after: after, before: before)
+        let page = pads.filter { pad in
+            guard matcher.matches(pad) else { return false }
+            if dateFilterActive {
+                switch createdAtPresence(pad) {
+                case .absent, .malformed:
+                    unusableCreatedAt += 1
+                    return false
+                case .present:
+                    break
+                }
+            }
+            return withinDateRange(pad, after: after, before: before)
         }
         matched += page.count
-        accumulateCounts(&counts, pads: page, field: field)
+        accumulateCounts(&accumulation, pads: page, field: field)
     }
     if let error = scan.error {
         return toolResult(error)
@@ -399,14 +440,14 @@ func aggregatePadsTool(
         return errorResult(message)
     }
 
-    let capped = topGroups(counts, limit: maxAggregateGroups)
+    let capped = topGroups(accumulation.counts, limit: maxReturnedAggregateGroups)
     let groups: [[String: Any]] = capped.map { ["value": $0.value, "count": $0.count] }
 
     var result: [String: Any] = [
         "group_by": field,
         "matched": matched,
         "scanned": scan.scanned,
-        "distinct_groups": counts.count,
+        "distinct_groups": accumulation.distinctGroups,
         "groups": groups,
         "pages_fetched": scan.pagesFetched,
         "truncated": scan.truncated,
@@ -416,9 +457,16 @@ func aggregatePadsTool(
     if !filters.isEmpty {
         result["filters"] = filters
     }
-    if counts.count > capped.count {
+    if accumulation.counts[aggregateOverflowGroup] != nil {
+        result["distinct_groups_includes_overflow"] = true
+    }
+    if dateFilterActive, unusableCreatedAt > 0 {
+        result["unusable_created_at"] = unusableCreatedAt
+        result["date_filter_incomplete"] = true
+    }
+    if accumulation.counts.count > capped.count {
         result["groups_truncated"] = true
-        result["note"] = "Showing the top \(capped.count) of \(counts.count) groups by count."
+        result["note"] = "Showing the top \(capped.count) of \(accumulation.counts.count) groups by count."
     }
     if scan.truncated {
         result["page_cap_note"] = "Hit the internal page cap (\(maxPadPagesToFetch) pages); the aggregation covers only the pads scanned."
@@ -442,6 +490,13 @@ func listPads(arguments: [String: Value]?, account: MCPAccount) async throws -> 
 }
 
 func listPadsCompact(arguments: [String: Value]?, account: MCPAccount) async throws -> CallTool.Result {
+    if let error = unknownArgumentError(
+        arguments,
+        allowed: [mcpAccountArgument, "page", "sort"],
+    ) {
+        return errorResult(error)
+    }
+
     if let error = pageValidationError(strictIntArgument(arguments, "page")) {
         return errorResult(error)
     }
@@ -458,13 +513,31 @@ func listPadsCompact(arguments: [String: Value]?, account: MCPAccount) async thr
         return errorResult(invalidListResponseMessage("/api/pads/", expecting: "pads", body: response.body))
     }
 
-    let compact = compactPads(pads)
+    var identities = RecordIdentityTracker()
+    var valid: [[String: Any]] = []
+    var malformed = 0
+    for pad in pads {
+        switch identities.acceptPad(pad) {
+        case .accepted:
+            valid.append(pad)
+        case .duplicate:
+            continue
+        case .invalid:
+            malformed += 1
+        }
+    }
+
+    let compact = compactPads(valid)
 
     var result: [String: Any] = ["pads": compact, "count": compact.count]
-    if let next = object["next_page"], !(next is NSNull) {
+    if malformed > 0 {
+        result["malformed_records"] = malformed
+        result["incomplete"] = true
+    }
+    if let next = compactPaginationMetadata(object["next_page"]) {
         result["next_page"] = next
     }
-    if let total = object["total"], !(total is NSNull) {
+    if let total = compactPaginationMetadata(object["total"]) {
         result["total"] = total
     }
 
@@ -594,6 +667,13 @@ func countQuestions(
     account: MCPAccount,
     cache: CoderPadMCPCache?,
 ) async throws -> CallTool.Result {
+    if let error = unknownArgumentError(
+        arguments,
+        allowed: [mcpAccountArgument, "owner", "author", "language", "type", "created_after", "created_before"],
+    ) {
+        return errorResult(error)
+    }
+
     if let error = questionFilterTypeError(arguments) {
         return errorResult(error)
     }
@@ -624,12 +704,23 @@ func countQuestions(
     // Built once for the whole list rather than re-normalizing the filter
     // values for every row (#2452).
     let matcher = QuestionMatcher(owner: owner, author: author, language: language, type: type)
+    let dateFilterActive = normalizedFilterValue(after) != nil || normalizedFilterValue(before) != nil
     var matched = 0
+    var unusableCreatedAt = 0
     let scan = try await fetchAllQuestions(account: account, cache: cache) { questions in
-        for question in questions
-            where matcher.matches(question) && withinDateRange(question, after: after, before: before)
-        {
-            matched += 1
+        for question in questions where matcher.matches(question) {
+            if dateFilterActive {
+                switch createdAtPresence(question) {
+                case .absent, .malformed:
+                    unusableCreatedAt += 1
+                    continue
+                case .present:
+                    break
+                }
+            }
+            if withinDateRange(question, after: after, before: before) {
+                matched += 1
+            }
         }
     }
     if let error = scan.error {
@@ -659,6 +750,10 @@ func countQuestions(
     if !filters.isEmpty {
         result["filters"] = filters
     }
+    if dateFilterActive, unusableCreatedAt > 0 {
+        result["unusable_created_at"] = unusableCreatedAt
+        result["date_filter_incomplete"] = true
+    }
     if scan.truncated {
         result["note"] = "Hit the internal page cap (\(maxPadPagesToFetch) pages); the count covers only the questions scanned."
     }
@@ -672,6 +767,13 @@ func aggregateQuestionsTool(
     account: MCPAccount,
     cache: CoderPadMCPCache?,
 ) async throws -> CallTool.Result {
+    if let error = unknownArgumentError(
+        arguments,
+        allowed: [mcpAccountArgument, "group_by", "owner", "author", "language", "type", "created_after", "created_before"],
+    ) {
+        return errorResult(error)
+    }
+
     guard let field = questionAggregateField(for: groupBy) else {
         return CallTool.Result(
             content: [.text(
@@ -698,15 +800,26 @@ func aggregateQuestionsTool(
     // Built once for the whole list rather than re-normalizing the filter
     // values for every row (#2452).
     let matcher = QuestionMatcher(owner: owner, author: author, language: language, type: type)
+    let dateFilterActive = normalizedFilterValue(after) != nil || normalizedFilterValue(before) != nil
     var matched = 0
-    var counts: [String: Int] = [:]
+    var unusableCreatedAt = 0
+    var accumulation = AggregateAccumulation()
     let scan = try await fetchAllQuestions(account: account, cache: cache) { questions in
-        let page = questions.filter {
-            matcher.matches($0)
-                && withinDateRange($0, after: after, before: before)
+        let page = questions.filter { question in
+            guard matcher.matches(question) else { return false }
+            if dateFilterActive {
+                switch createdAtPresence(question) {
+                case .absent, .malformed:
+                    unusableCreatedAt += 1
+                    return false
+                case .present:
+                    break
+                }
+            }
+            return withinDateRange(question, after: after, before: before)
         }
         matched += page.count
-        accumulateCounts(&counts, pads: page, field: field)
+        accumulateCounts(&accumulation, pads: page, field: field)
     }
     if let error = scan.error {
         return toolResult(error)
@@ -721,14 +834,14 @@ func aggregateQuestionsTool(
         return errorResult(message)
     }
 
-    let capped = topGroups(counts, limit: maxAggregateGroups)
+    let capped = topGroups(accumulation.counts, limit: maxReturnedAggregateGroups)
     let groups: [[String: Any]] = capped.map { ["value": $0.value, "count": $0.count] }
 
     var result: [String: Any] = [
         "group_by": field,
         "matched": matched,
         "scanned": scan.scanned,
-        "distinct_groups": counts.count,
+        "distinct_groups": accumulation.distinctGroups,
         "groups": groups,
         "pages_fetched": scan.pagesFetched,
         "truncated": scan.truncated,
@@ -738,9 +851,16 @@ func aggregateQuestionsTool(
     if !filters.isEmpty {
         result["filters"] = filters
     }
-    if counts.count > capped.count {
+    if accumulation.counts[aggregateOverflowGroup] != nil {
+        result["distinct_groups_includes_overflow"] = true
+    }
+    if dateFilterActive, unusableCreatedAt > 0 {
+        result["unusable_created_at"] = unusableCreatedAt
+        result["date_filter_incomplete"] = true
+    }
+    if accumulation.counts.count > capped.count {
         result["groups_truncated"] = true
-        result["note"] = "Showing the top \(capped.count) of \(counts.count) groups by count."
+        result["note"] = "Showing the top \(capped.count) of \(accumulation.counts.count) groups by count."
     }
     if scan.truncated {
         result["page_cap_note"] = "Hit the internal page cap (\(maxPadPagesToFetch) pages); the aggregation covers only the questions scanned."
@@ -764,6 +884,13 @@ func listQuestions(arguments: [String: Value]?, account: MCPAccount) async throw
 }
 
 func listQuestionsCompact(arguments: [String: Value]?, account: MCPAccount) async throws -> CallTool.Result {
+    if let error = unknownArgumentError(
+        arguments,
+        allowed: [mcpAccountArgument, "page", "sort"],
+    ) {
+        return errorResult(error)
+    }
+
     if let error = pageValidationError(strictIntArgument(arguments, "page")) {
         return errorResult(error)
     }
@@ -780,13 +907,31 @@ func listQuestionsCompact(arguments: [String: Value]?, account: MCPAccount) asyn
         return errorResult(invalidListResponseMessage("/api/questions/", expecting: "questions", body: response.body))
     }
 
-    let compact = compactQuestions(questions)
+    var identities = RecordIdentityTracker()
+    var valid: [[String: Any]] = []
+    var malformed = 0
+    for question in questions {
+        switch identities.acceptQuestion(question) {
+        case .accepted:
+            valid.append(question)
+        case .duplicate:
+            continue
+        case .invalid:
+            malformed += 1
+        }
+    }
+
+    let compact = compactQuestions(valid)
 
     var result: [String: Any] = ["questions": compact, "count": compact.count]
-    if let next = object["next_page"], !(next is NSNull) {
+    if malformed > 0 {
+        result["malformed_records"] = malformed
+        result["incomplete"] = true
+    }
+    if let next = compactPaginationMetadata(object["next_page"]) {
         result["next_page"] = next
     }
-    if let total = object["total"], !(total is NSNull) {
+    if let total = compactPaginationMetadata(object["total"]) {
         result["total"] = total
     }
 

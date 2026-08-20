@@ -281,6 +281,21 @@ func utcCreatedPrefix(_ created: String, count: Int) -> String? {
     return String(DateParsers.utcDayFormatter.string(from: date).prefix(count))
 }
 
+/// Classification of a record's `created_at` for date-filtered scans.
+public enum CreatedAtPresence: Equatable, Sendable {
+    case absent
+    case malformed
+    case present
+}
+
+/// Whether `created_at` is absent, present-but-unparseable, or a usable timestamp.
+public func createdAtPresence(_ record: [String: Any]) -> CreatedAtPresence {
+    guard let raw = record["created_at"] as? String else { return .absent }
+    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return .absent }
+    return iso8601Date(from: trimmed) == nil ? .malformed : .present
+}
+
 /// Shared parser/formatter instances: `DateFormatter` and `ISO8601DateFormatter`
 /// are documented thread-safe on modern OS releases, and a count/aggregate scan
 /// parses one date per record - allocating a fresh formatter each time dominated
@@ -311,7 +326,8 @@ private enum DateParsers {
 /// `created_at` fails any present bound; empty/absent bounds always pass. Shared by the pad
 /// and question count/aggregate tools.
 public func withinDateRange(_ record: [String: Any], after: String?, before: String?) -> Bool {
-    let created = (record["created_at"] as? String) ?? ""
+    let created = ((record["created_at"] as? String) ?? "")
+        .trimmingCharacters(in: .whitespacesAndNewlines)
     func passes(_ bound: String?, isAfter: Bool) -> Bool {
         guard let bound, !bound.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return true }
         guard !created.isEmpty else { return false }
@@ -346,6 +362,8 @@ public func dateBoundValidationError(after: String?, before: String?) -> String?
     // An inverted range silently yields zero records, which reads as a legitimate
     // empty result (#1604). Month/date bounds compare as whole inclusive periods
     // (a before of 2025-01 spans all of January), matching `withinDateRange`.
+    // Upper bounds use the next period's exclusive start so fractional final-second
+    // timestamps remain representable (#153).
     if let after, let lower = dateBound(from: after).flatMap({ orderingInstant($0, isUpper: false) }),
        let before, let upper = dateBound(from: before).flatMap({ orderingInstant($0, isUpper: true) }),
        lower > upper
@@ -356,8 +374,8 @@ public func dateBoundValidationError(after: String?, before: String?) -> String?
 }
 
 /// The instant a bound occupies for range-ordering purposes: timestamps are exact,
-/// and month/date bounds resolve to the start of their period as a lower bound or
-/// its final second as an upper bound (they filter as whole inclusive periods).
+/// month/date lower bounds are the period start, and month/date upper bounds are the
+/// exclusive start of the next period (so the full inclusive filter window is ordered).
 private func orderingInstant(_ bound: DateBound, isUpper: Bool) -> Date? {
     var calendar = Calendar(identifier: .gregorian)
     calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? calendar.timeZone
@@ -371,7 +389,7 @@ private func orderingInstant(_ bound: DateBound, isUpper: Bool) -> Date? {
               let start = calendar.date(from: DateComponents(year: parts[0], month: parts[1])) else { return nil }
         guard isUpper else { return start }
 
-        return calendar.date(byAdding: DateComponents(month: 1, second: -1), to: start)
+        return calendar.date(byAdding: DateComponents(month: 1), to: start)
 
     case let .day(value):
         let parts = value.split(separator: "-").compactMap { Int($0) }
@@ -380,7 +398,7 @@ private func orderingInstant(_ bound: DateBound, isUpper: Bool) -> Date? {
         else { return nil }
         guard isUpper else { return start }
 
-        return calendar.date(byAdding: DateComponents(day: 1, second: -1), to: start)
+        return calendar.date(byAdding: DateComponents(day: 1), to: start)
     }
 }
 
@@ -418,11 +436,75 @@ private func dateBound(from value: String) -> DateBound? {
 }
 
 private func iso8601Date(from value: String) -> Date? {
-    if let date = DateParsers.iso8601.date(from: value) {
-        return date
-    }
+    let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard hasValidISO8601Offset(trimmed), hasValidTimestampComponents(trimmed) else { return nil }
+    return DateParsers.iso8601.date(from: trimmed)
+        ?? DateParsers.iso8601Fractional.date(from: trimmed)
+}
 
-    return DateParsers.iso8601Fractional.date(from: value)
+/// Rejects impossible timezone offsets such as `+24:00` or `+99:99` before Foundation
+/// normalizes them into unrelated instants.
+private func hasValidISO8601Offset(_ value: String) -> Bool {
+    if value.hasSuffix("Z") || value.hasSuffix("z") { return true }
+    guard let index = value.lastIndex(where: { $0 == "+" || $0 == "-" }),
+          index > value.startIndex,
+          value[..<index].contains(where: { $0 == "T" || $0 == "t" })
+    else { return false }
+
+    let offset = value[value.index(after: index)...]
+    if offset.count == 5, offset[offset.index(offset.startIndex, offsetBy: 2)] == ":" {
+        let hours = offset.prefix(2)
+        let minutes = offset.suffix(2)
+        guard hours.allSatisfy(\.isNumber), minutes.allSatisfy(\.isNumber),
+              let hour = Int(hours), let minute = Int(minutes),
+              (0 ... 23).contains(hour), (0 ... 59).contains(minute)
+        else { return false }
+        return true
+    }
+    if offset.count == 4, offset.allSatisfy(\.isNumber) {
+        guard let hour = Int(offset.prefix(2)), let minute = Int(offset.suffix(2)),
+              (0 ... 23).contains(hour), (0 ... 59).contains(minute)
+        else { return false }
+        return true
+    }
+    return false
+}
+
+/// Rejects calendar-impossible timestamps that Foundation would otherwise normalize
+/// (for example `2026-02-30` or `T24:00:00`).
+private func hasValidTimestampComponents(_ value: String) -> Bool {
+    guard let tIndex = value.firstIndex(of: "T") ?? value.firstIndex(of: "t") else { return false }
+    let datePart = value[..<tIndex]
+    let timeAndZone = value[value.index(after: tIndex)...]
+    guard datePart.count == 10,
+          let timeEnd = timeAndZone.firstIndex(where: { $0 == "+" || $0 == "-" || $0 == "Z" || $0 == "z" })
+    else { return false }
+
+    let timePart = timeAndZone[..<timeEnd]
+    let timePieces = timePart.split(separator: ":", omittingEmptySubsequences: false)
+    guard timePieces.count >= 2,
+          let year = Int(datePart.prefix(4)),
+          let month = Int(datePart.dropFirst(5).prefix(2)),
+          let day = Int(datePart.suffix(2)),
+          let hour = Int(timePieces[0]),
+          let minute = Int(timePieces[1]),
+          (0 ... 23).contains(hour),
+          (0 ... 59).contains(minute)
+    else { return false }
+
+    let secondFragment = timePieces.count >= 3 ? timePieces[2] : "0"
+    let secondPieces = secondFragment.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
+    guard let second = Int(secondPieces[0]), (0 ... 59).contains(second) else { return false }
+
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? calendar.timeZone
+    let components = DateComponents(
+        calendar: calendar, timeZone: calendar.timeZone,
+        year: year, month: month, day: day,
+    )
+    guard let date = calendar.date(from: components) else { return false }
+    let resolved = calendar.dateComponents([.year, .month, .day], from: date)
+    return resolved.year == year && resolved.month == month && resolved.day == day
 }
 
 private func isValidMonthBound(_ value: String) -> Bool {
@@ -519,11 +601,26 @@ public let maxAggregateGroups = 1000
 public let maxAggregateKeyLength = 128
 public let aggregateOverflowGroup = "__additional_groups__"
 public let aggregateMissingGroup = "__missing_value__"
+public let aggregateLiteralPrefix = "literal:"
+
+public struct AggregateAccumulation: Equatable, Sendable {
+    public var counts: [String: Int]
+    /// True cardinality of distinct group keys, including values folded into the overflow bucket.
+    public var distinctGroups: Int
+    /// Keys already folded into ``aggregateOverflowGroup`` so repeats are not re-counted.
+    var foldedKeys: Set<String>
+
+    public init(counts: [String: Int] = [:], distinctGroups: Int = 0, foldedKeys: Set<String> = []) {
+        self.counts = counts
+        self.distinctGroups = distinctGroups
+        self.foldedKeys = foldedKeys
+    }
+}
 
 public func aggregateCounts(pads: [[String: Any]], field: String) -> [String: Int] {
-    var counts: [String: Int] = [:]
-    accumulateCounts(&counts, pads: pads, field: field)
-    return counts
+    var accumulation = AggregateAccumulation()
+    accumulateCounts(&accumulation, pads: pads, field: field)
+    return accumulation.counts
 }
 
 /// The page-at-a-time form of `aggregateCounts`: tallies `pads` into an existing map so
@@ -531,11 +628,22 @@ public func aggregateCounts(pads: [[String: Any]], field: String) -> [String: In
 /// every record just to group it afterwards (#2121). The cardinality cap is applied to
 /// the running map, so the result matches tallying the same rows in one go.
 public func accumulateCounts(_ counts: inout [String: Int], pads: [[String: Any]], field: String) {
+    var accumulation = AggregateAccumulation(counts: counts, distinctGroups: counts.count)
+    accumulateCounts(&accumulation, pads: pads, field: field)
+    counts = accumulation.counts
+}
+
+public func accumulateCounts(
+    _ accumulation: inout AggregateAccumulation,
+    pads: [[String: Any]],
+    field: String,
+) {
     for pad in pads {
         var key: String
         var isMissing = false
         if field == "month" {
-            let created = (pad["created_at"] as? String) ?? ""
+            let created = ((pad["created_at"] as? String) ?? "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
             if let month = utcCreatedPrefix(created, count: 7) {
                 key = month
             } else {
@@ -550,6 +658,7 @@ public func accumulateCounts(_ counts: inout [String: Int], pads: [[String: Any]
                 key = switch field {
                 case "state": canonicalPadState(raw)
                 case "owner_email", "author_name", "language": raw.lowercased()
+                case "pad_type": canonicalInterviewType(raw)
                 default: raw
                 }
             } else {
@@ -558,19 +667,35 @@ public func accumulateCounts(_ counts: inout [String: Int], pads: [[String: Any]
             }
         }
         key = boundedAggregateKey(key)
-        if !isMissing, key == aggregateMissingGroup {
-            key += " [literal value]"
+        if !isMissing {
+            key = escapeAggregateSentinel(key)
         }
-        if key == aggregateOverflowGroup {
-            key += " [literal value]"
+        let atCapacity = accumulation.counts[aggregateOverflowGroup] != nil
+            || accumulation.counts.count >= maxAggregateGroups - 1
+        if let existing = accumulation.counts[key] {
+            accumulation.counts[key] = existing + 1
+        } else if accumulation.foldedKeys.contains(key) {
+            accumulation.counts[aggregateOverflowGroup, default: 0] += 1
+        } else if atCapacity {
+            accumulation.distinctGroups += 1
+            accumulation.foldedKeys.insert(key)
+            accumulation.counts[aggregateOverflowGroup, default: 0] += 1
+        } else {
+            accumulation.distinctGroups += 1
+            accumulation.counts[key] = 1
         }
-        if counts[key] == nil,
-           counts[aggregateOverflowGroup] != nil || counts.count >= maxAggregateGroups - 1
-        {
-            key = aggregateOverflowGroup
-        }
-        counts[key, default: 0] += 1
     }
+}
+
+/// Tags literal values that would otherwise collide with sentinel group names.
+private func escapeAggregateSentinel(_ key: String) -> String {
+    if key == aggregateMissingGroup
+        || key == aggregateOverflowGroup
+        || key.hasPrefix(aggregateLiteralPrefix)
+    {
+        return aggregateLiteralPrefix + key
+    }
+    return key
 }
 
 /// Keeps untrusted display keys bounded without merging values that share a prefix.
@@ -605,6 +730,8 @@ public func topGroups(_ counts: [String: Int], limit: Int) -> [AggregateGroup] {
 /// The fields kept by list_pads_compact, dropping the verbose blob so far more rows
 /// fit per response.
 public let compactPadKeys = ["id", "title", "owner_email", "state", "language", "created_at"]
+public let maxCompactScalarCharacters = 1000
+public let maxCompactScalarUTF8Bytes = 4000
 
 /// Projects pads down to the compact key set. Only scalar values survive (#1608):
 /// a response nesting a huge object under an allowed key would defeat the entire
@@ -621,12 +748,40 @@ public func compactPads(_ pads: [[String: Any]]) -> [[String: Any]] {
     }
 }
 
+/// Bounded scalar pagination metadata for compact list tools.
+public func compactPaginationMetadata(_ value: Any?) -> Any? {
+    if value is Bool || value is NSNull { return nil }
+    if let string = value as? String {
+        return compactScalar(string)
+    }
+    if let number = value as? NSNumber {
+        if isBooleanNSNumber(number) { return nil }
+        let doubleValue = number.doubleValue
+        guard doubleValue.isFinite,
+              doubleValue >= Double(Int64.min),
+              doubleValue <= Double(Int64.max),
+              doubleValue.rounded() == doubleValue
+        else { return nil }
+        return Int64(doubleValue)
+    }
+    return nil
+}
+
+private func isBooleanNSNumber(_ number: NSNumber) -> Bool {
+    #if canImport(CoreFoundation) && !os(Linux)
+        CFGetTypeID(number) == CFBooleanGetTypeID()
+    #else
+        false
+    #endif
+}
+
 /// The scalar (string/number/bool/null) form of a compact-row value, with strings
-/// capped; nested arrays/objects are dropped rather than copied through (#1608).
+/// capped by character and UTF-8 budgets; nested arrays/objects are dropped rather
+/// than copied through (#1608, #181, #182).
 func compactScalar(_ value: Any?) -> Any? {
     switch value {
     case let string as String:
-        string.count > 1000 ? String(string.prefix(1000)) + "…" : string
+        truncateCompactString(string)
     case let number as NSNumber:
         number
     case is NSNull:
@@ -634,4 +789,30 @@ func compactScalar(_ value: Any?) -> Any? {
     default:
         nil
     }
+}
+
+func truncateCompactString(_ string: String) -> String {
+    if string.count <= maxCompactScalarCharacters, string.utf8.count <= maxCompactScalarUTF8Bytes {
+        return string
+    }
+
+    let ellipsis = "…"
+    let maxBodyCharacters = maxCompactScalarCharacters - 1
+    let maxBodyUTF8 = maxCompactScalarUTF8Bytes - ellipsis.utf8.count
+    var characterCount = 0
+    var byteCount = 0
+    var end = string.startIndex
+    var index = string.startIndex
+    while index < string.endIndex {
+        let next = string.index(after: index)
+        let scalarBytes = string[index ..< next].utf8.count
+        if characterCount + 1 > maxBodyCharacters || byteCount + scalarBytes > maxBodyUTF8 {
+            break
+        }
+        characterCount += 1
+        byteCount += scalarBytes
+        end = next
+        index = next
+    }
+    return String(string[..<end]) + ellipsis
 }

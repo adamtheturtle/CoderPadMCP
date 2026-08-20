@@ -6,6 +6,9 @@ public enum CoderPadMCPRecordKind: String, Sendable {
     case questions
 }
 
+/// Maximum encoded JSON blob accepted from a host cache hook before parse.
+public let maxCoderPadMCPCacheBytes = 8 * 1024 * 1024
+
 /// Optional host cache hooks used by embedded providers.
 ///
 /// The cache returns encoded JSON arrays to keep the public boundary Sendable and

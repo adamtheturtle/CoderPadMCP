@@ -11,6 +11,8 @@ public let maxPadTitleCharacters = 255
 /// UTF-8 safety bound for titles: at most four bytes per Unicode scalar (#162).
 public let maxPadTitleUTF8Bytes = maxPadTitleCharacters * 4
 public let maxOwnerEmailBytes = 254
+/// Matches `CoderPadKit.ScreenClient.maximumEmailFilterLength` for Screen list filters.
+public let maxScreenCandidateEmailCharacters = 320
 public let maxMCPWriteFieldBytes = 512 * 1024
 public let maxMCPWriteBodyBytes = 1024 * 1024
 
@@ -133,8 +135,42 @@ public func normalizedScreenCandidateEmail(_ email: String?) -> String? {
 }
 
 public func screenCandidateEmailValidationError(_ email: String?) -> String? {
-    guard let email = normalizedScreenCandidateEmail(email), ownerEmailValidationError(email) != nil else { return nil }
-    return "candidateEmail must be a valid email address."
+    guard let email = normalizedScreenCandidateEmail(email) else { return nil }
+    guard email.count <= maxScreenCandidateEmailCharacters,
+          email.allSatisfy(\.isASCII),
+          !email.contains(where: \.isWhitespace),
+          !email.unicodeScalars.contains(where: {
+              let category = $0.properties.generalCategory
+              return category == .control || category == .format
+          })
+    else {
+        return "candidateEmail must be a valid email address."
+    }
+
+    let parts = email.split(separator: "@", omittingEmptySubsequences: false)
+    guard parts.count == 2 else { return "candidateEmail must be a valid email address." }
+    let local = parts[0]
+    let domain = parts[1]
+    let localSymbols = Set("!#$%&'*+-/=?^_`{|}~")
+    guard (1 ... 64).contains(local.utf8.count),
+          !local.hasPrefix("."), !local.hasSuffix("."), !local.contains(".."),
+          local.allSatisfy({ $0 == "." || $0.isLetter || $0.isNumber || localSymbols.contains($0) })
+    else {
+        return "candidateEmail must be a valid email address."
+    }
+
+    let labels = domain.split(separator: ".", omittingEmptySubsequences: false)
+    guard labels.count >= 2,
+          labels.allSatisfy({ label in
+              !label.isEmpty && label.utf8.count <= 63
+                  && !label.hasPrefix("-") && !label.hasSuffix("-")
+                  && label.allSatisfy { $0.isLetter || $0.isNumber || $0 == "-" }
+          })
+    else {
+        return "candidateEmail must be a valid email address."
+    }
+
+    return nil
 }
 
 public func padSeedValidationError(questionID: Int?, contents: String?) -> String? {

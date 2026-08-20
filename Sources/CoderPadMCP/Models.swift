@@ -44,9 +44,36 @@ public struct APIResponse: Sendable {
     }
 }
 
-/// Whether a response body is syntactically valid JSON. Endpoints are deliberately
-/// passed through without schema decoding, but an HTTP 200 proxy/login page must not
-/// be advertised to MCP clients as successful JSON.
+/// Whether a response body is syntactically valid JSON, including fragments.
 public func isValidJSON(_ data: Data) -> Bool {
     (try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])) != nil
+}
+
+/// Whether a response body is a top-level JSON object or array. Scalar fragments such as
+/// `null`, `true`, or `"text"` are rejected so proxy/schema failures cannot masquerade as
+/// documented endpoint payloads.
+public func isValidJSONObjectOrArray(_ data: Data) -> Bool {
+    guard let value = try? JSONSerialization.jsonObject(with: data) else { return false }
+    return value is [String: Any] || value is [Any]
+}
+
+/// Detects the CoderPad API's documented error envelope even when wrapped in HTTP 2xx.
+public func apiErrorEnvelopeMessage(in data: Data) -> String? {
+    guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+          let status = object["status"] as? String,
+          status.caseInsensitiveCompare("ERROR") == .orderedSame
+    else {
+        return nil
+    }
+
+    if let message = object["message"] as? String,
+       !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    {
+        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        let bounded = trimmed.utf8.count > 240
+            ? String(decoding: trimmed.utf8.prefix(240), as: UTF8.self) + "…"
+            : trimmed
+        return "CoderPad API error: \(bounded)"
+    }
+    return "CoderPad API error."
 }

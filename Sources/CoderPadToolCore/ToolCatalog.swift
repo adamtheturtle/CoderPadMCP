@@ -28,7 +28,11 @@ public func mcpToolDescriptor(
     schemaExtras: [String: Any] = [:],
     annotations: [String: Any] = [:],
 ) -> [String: Any] {
-    var schema: [String: Any] = ["type": "object", "properties": properties]
+    var schema: [String: Any] = [
+        "type": "object",
+        "properties": properties,
+        "additionalProperties": false,
+    ]
     if !required.isEmpty {
         schema["required"] = required
     }
@@ -282,11 +286,18 @@ public nonisolated(unsafe) let coderPadScreenToolDescriptors: [[String: Any]] =
             "List Screen test sessions (candidate assessments), optionally filtered by campaign or "
                 + "candidate email. Offset-paginated via start/limit.",
             properties: withAccount([
-                "campaignId": mcpIntSchema("Optional. Only sessions in this campaign.", minimum: 1),
-                "candidateEmail": mcpStringSchema("Optional. Only sessions for this candidate email."),
+                "campaignId": mcpIntSchema(
+                    "Optional. Only sessions in this campaign.",
+                    minimum: 1,
+                    maximum: maximumScreenID,
+                ),
+                "candidateEmail": mcpStringSchema(
+                    "Optional. Only sessions for this candidate email.",
+                    maxLength: maxScreenCandidateEmailCharacters,
+                ),
                 "start": mcpIntSchema("Optional. Offset of the first session to return.", minimum: 0),
                 "limit": mcpIntSchema(
-                    "Optional. Maximum number of sessions to return (up to 50).",
+                    "Optional. Maximum number of sessions to return (up to \(maxPaginationLimit)).",
                     minimum: 1,
                     maximum: maxPaginationLimit,
                 ),
@@ -294,8 +305,14 @@ public nonisolated(unsafe) let coderPadScreenToolDescriptors: [[String: Any]] =
         ),
         mcpToolDescriptor(
             "screen_get_test",
-            "Get a single Screen test session by its numeric id, including its report.",
-            properties: withAccount(["test": mcpIntSchema("The session's numeric id.", minimum: 1)]),
+            "Get a single Screen test session by its numeric id, including its report when available.",
+            properties: withAccount([
+                "test": mcpIntSchema(
+                    "The session's numeric id.",
+                    minimum: 1,
+                    maximum: maximumScreenID,
+                ),
+            ]),
             required: ["test"],
         ),
     ]

@@ -5,14 +5,25 @@
 
 import Foundation
 
+/// Screen's documented campaign/test id domain (`integer<int32>`).
+public let maximumScreenID = Int(Int32.max)
+
 /// Character and UTF-8 ceilings for account names/ids used as tool selectors and
 /// resource path components. Kept in ToolCore so schemas and runtime share one bound.
 public let maxAccountSelectorCharacters = 100
 public let maxAccountSelectorUTF8Bytes = 256
 
+
 /// Returns a numeric server-object identifier only when it can name a real object.
 public func positiveID(_ id: Int?) -> Int? {
     guard let id, id > 0 else { return nil }
+
+    return id
+}
+
+/// A Screen campaign or test id: positive and within the API's int32 domain.
+public func positiveScreenID(_ id: Int?) -> Int? {
+    guard let id, id > 0, id <= maximumScreenID else { return nil }
 
     return id
 }

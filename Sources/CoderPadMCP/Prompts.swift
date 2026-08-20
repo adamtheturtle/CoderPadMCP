@@ -138,8 +138,10 @@ public func renderPrompt(name: String, arguments: [String: String]?) throws -> G
 
     case "draft_question":
         let topic = try requiredPromptArgument(arguments, "topic")
-        let language = promptArgument(arguments, "language")
-        let difficulty = try validatedDraftQuestionDifficulty(promptArgument(arguments, "difficulty"))
+        let language = try optionalPromptArgument(arguments, "language")
+        let difficulty = try validatedDraftQuestionDifficulty(
+            try optionalPromptArgument(arguments, "difficulty")
+        )
         var constraints = ""
         if let language {
             constraints += "\nTarget language: \(language)."

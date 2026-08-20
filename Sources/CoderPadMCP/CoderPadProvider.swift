@@ -35,7 +35,7 @@ private let knownToolNames = Set(
 
 // MARK: - Result helpers
 
-private func missingArgument(_ name: String) -> CallTool.Result {
+func missingArgument(_ name: String) -> CallTool.Result {
     CallTool.Result(
         content: [.text(text: "Missing required argument: \(name)", annotations: nil, _meta: nil)],
         isError: true,
@@ -78,6 +78,7 @@ func cachedRecords(
     cache: CoderPadMCPCache?,
 ) -> [[String: Any]]? {
     guard let data = cache?.load(kind, account.id, requireFresh),
+          data.count <= maxCoderPadMCPCacheBytes,
           let records = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]
     else {
         return nil
@@ -103,19 +104,37 @@ private func getRecord(
         .first { String(describing: $0[idKey] ?? "") == id || String(describing: $0["slug"] ?? "") == id }
     guard let record else { return toolResult(response) }
 
-    return jsonResult(record)
+    var payload = record
+    payload["_stale"] = true
+    payload["_cache_fallback"] = true
+    payload["_transport_failure"] = response.body
+    return jsonResult(payload)
 }
 
-private func invalidating(
+func invalidating(
     _ result: CallTool.Result,
     kind: CoderPadMCPRecordKind,
     account: MCPAccount,
     cache: CoderPadMCPCache?,
+    dryRun: Bool,
 ) async -> CallTool.Result {
-    if result.isError != true {
+    if result.isError != true, !dryRun {
         await cache?.invalidate(kind, account.id)
     }
     return result
+}
+
+func unknownArgumentError(
+    _ arguments: [String: Value]?,
+    allowed: Set<String>,
+) -> String? {
+    guard let arguments else { return nil }
+    let unknown = arguments.keys.filter { !allowed.contains($0) }.sorted()
+    guard let first = unknown.first else { return nil }
+    if unknown.count == 1 {
+        return "Unknown argument \"\(first)\"."
+    }
+    return "Unknown arguments: \(unknown.map { "\"\($0)\"" }.joined(separator: ", "))."
 }
 
 // MARK: - Server
@@ -440,145 +459,6 @@ private func dispatch(
     }
 }
 
-/// The Screen and write tools, split out so `dispatch` stays within the
-/// cyclomatic-complexity budget.
-private func dispatchScreenOrWrite(
-    name: String,
-    arguments: [String: Value]?,
-    account: MCPAccount,
-    cache: CoderPadMCPCache?,
-) async throws -> CallTool.Result {
-    let writeArgumentAllowlists: [String: Set<String>] = [
-        "create_pad": [
-            mcpAccountArgument, "title", "language", "question_id", "contents", "owner_email",
-            "notes", "team_id", "dry_run",
-        ],
-        "update_pad": [
-            mcpAccountArgument, "pad", "title", "notes", "owner_email", "language", "dry_run",
-        ],
-        "create_question": [
-            mcpAccountArgument, "title", "language", "description", "solution", "contents", "dry_run",
-        ],
-        "update_question": [
-            mcpAccountArgument, "question", "title", "language", "description", "solution",
-            "contents", "dry_run",
-        ],
-    ]
-    let budgetedWriteFields = [
-        "create_pad": ["title", "language", "contents", "owner_email", "notes", "team_id"],
-        "update_pad": ["title", "notes", "owner_email", "language"],
-        "create_question": ["title", "language", "description", "solution", "contents"],
-        "update_question": ["title", "language", "description", "solution", "contents"],
-    ]
-    if let allowed = writeArgumentAllowlists[name],
-       let error = unknownWriteArgumentError(arguments, allowed: allowed)
-    {
-        return errorResult(error)
-    }
-    if let fields = budgetedWriteFields[name],
-       let invalid = invalidWriteStringArgument(arguments, names: fields)
-    {
-        return errorResult("\(invalid) must be a string.")
-    }
-    if let fields = budgetedWriteFields[name],
-       let error = writeStringBudgetValidationError(arguments, fields: fields)
-    {
-        return errorResult(error)
-    }
-
-    switch name {
-    case "screen_list_campaigns":
-        return try await toolResult(screenGet("/campaigns", account: account))
-
-    case "screen_list_tests":
-        if let campaign = strictIntArgument(arguments, "campaignId"), positiveID(campaign) == nil {
-            return errorResult("campaignId must be a positive integer.")
-        }
-        if let error = screenPaginationValidationError(
-            start: strictIntArgument(arguments, "start"),
-            limit: strictIntArgument(arguments, "limit"),
-        ) {
-            return errorResult(error)
-        }
-        if let invalid = invalidPresentStringArgument(arguments, names: ["candidateEmail"]) {
-            return errorResult("\(invalid) must be a string.")
-        }
-        let rawCandidateEmail = stringArgument(arguments, "candidateEmail")
-        if let error = screenCandidateEmailValidationError(rawCandidateEmail) {
-            return errorResult(error)
-        }
-
-        return try await toolResult(screenGet(
-            "/tests",
-            account: account,
-            query: screenTestQuery(arguments, candidateEmail: normalizedScreenCandidateEmail(rawCandidateEmail)),
-        ))
-
-    case "screen_get_test":
-        guard let test = positiveID(strictIntArgument(arguments, "test")) else {
-            return errorResult("test must be a positive integer.")
-        }
-
-        return try await toolResult(screenGet("/tests/\(test)", account: account))
-
-    case "create_pad":
-        let result = try await createPad(arguments: arguments, account: account)
-        return await invalidating(result, kind: .pads, account: account, cache: cache)
-
-    case "update_pad":
-        guard let pad = validatedPadID(stringArgument(arguments, "pad")) else {
-            return errorResult("pad must be a positive id or a non-empty slug.")
-        }
-
-        let result = try await updatePad(id: pad, arguments: arguments, account: account)
-        return await invalidating(result, kind: .pads, account: account, cache: cache)
-
-    case "create_question":
-        guard arguments?["title"] != nil else { return missingArgument("title") }
-        let rawTitle = presentWriteString(arguments, "title")
-        if let error = questionTitleValidationError(rawTitle) {
-            return errorResult(error)
-        }
-        guard let title = rawTitle?.trimmingCharacters(in: .whitespacesAndNewlines) else {
-            return missingArgument("title")
-        }
-
-        let result = try await createQuestion(title: title, arguments: arguments, account: account)
-        return await invalidating(result, kind: .questions, account: account, cache: cache)
-
-    case "update_question":
-        guard let question = positiveID(strictIntArgument(arguments, "question")) else {
-            return errorResult("question must be a positive integer.")
-        }
-
-        let result = try await updateQuestion(id: question, arguments: arguments, account: account)
-        return await invalidating(result, kind: .questions, account: account, cache: cache)
-
-    default:
-        return CallTool.Result(
-            content: [.text(text: "Unknown tool: \(name)", annotations: nil, _meta: nil)],
-            isError: true,
-        )
-    }
-}
-
-private func screenTestQuery(_ arguments: [String: Value]?, candidateEmail: String?) -> [URLQueryItem] {
-    var query: [URLQueryItem] = []
-    if let campaign = strictIntArgument(arguments, "campaignId") {
-        query.append(URLQueryItem(name: "campaignId", value: String(campaign)))
-    }
-    if let email = candidateEmail {
-        query.append(URLQueryItem(name: "candidateEmail", value: email))
-    }
-    if let start = strictIntArgument(arguments, "start") {
-        query.append(URLQueryItem(name: "start", value: String(start)))
-    }
-    if let limit = strictIntArgument(arguments, "limit") {
-        query.append(URLQueryItem(name: "limit", value: String(limit)))
-    }
-    return query
-}
-
 // MARK: - whoami (#518)
 
 /// Reports which account/org this server acts as, without the API key: the account
@@ -742,7 +622,7 @@ private func dryRunResult(method: String, path: String, body: [String: Any]) -> 
     jsonResult(["dry_run": true, "changed": false, "method": method, "path": path, "body": body])
 }
 
-private func createPad(arguments: [String: Value]?, account: MCPAccount) async throws -> CallTool.Result {
+func createPad(arguments: [String: Value]?, account: MCPAccount) async throws -> CallTool.Result {
     let title = optionalString(arguments, "title")
     if let error = padTitleValidationError(title) {
         return errorResult(error)
@@ -798,7 +678,7 @@ private func createPad(arguments: [String: Value]?, account: MCPAccount) async t
     return try await toolResult(apiSend("POST", "/api/pads/", account: account, body: body))
 }
 
-private func updatePad(id: String, arguments: [String: Value]?, account: MCPAccount) async throws -> CallTool.Result {
+func updatePad(id: String, arguments: [String: Value]?, account: MCPAccount) async throws -> CallTool.Result {
     let title = presentWriteString(arguments, "title")
     if let error = padUpdateTitleValidationError(title) {
         return errorResult(error)
@@ -835,7 +715,7 @@ private func updatePad(id: String, arguments: [String: Value]?, account: MCPAcco
     return try await toolResult(apiSend("PUT", "/api/pads/\(id)", account: account, body: body))
 }
 
-private func createQuestion(
+func createQuestion(
     title: String,
     arguments: [String: Value]?,
     account: MCPAccount,
@@ -865,7 +745,7 @@ private func createQuestion(
     return try await toolResult(apiSend("POST", "/api/questions/", account: account, body: body))
 }
 
-private func updateQuestion(
+func updateQuestion(
     id: Int,
     arguments: [String: Value]?,
     account: MCPAccount,

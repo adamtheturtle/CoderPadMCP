@@ -43,6 +43,43 @@ enum ProviderRequestContext {
     @TaskLocal static var interviewRequest = liveInterviewRequest
 }
 
+/// Locally synthesized transport failures use status 0 with a safe category token in the
+/// body so callers can act without hashing an opaque fingerprint.
+enum TransportFailureCategory: String, Sendable {
+    case offline
+    case timeout
+    case responseTooLarge = "response_too_large"
+    case invalidURL = "invalid_url"
+    case encodingFailed = "encoding_failed"
+    case screenNotConfigured = "screen_not_configured"
+    case requestFailed = "request_failed"
+}
+
+func transportFailureResponse(_ category: TransportFailureCategory) -> APIResponse {
+    APIResponse(status: 0, body: category.rawValue)
+}
+
+func classifyTransportError(_ error: Error) -> TransportFailureCategory {
+    if error is BoundedHTTPResponseError {
+        return .responseTooLarge
+    }
+    let text = error.localizedDescription.lowercased()
+    if text.contains("timed out") || text.contains("timeout") {
+        return .timeout
+    }
+    if text.contains("offline")
+        || text.contains("not connected")
+        || text.contains("network connection was lost")
+        || text.contains("could not connect")
+        || text.contains("dns")
+        || text.contains("name or service not known")
+        || text.contains("nodename nor servname")
+    {
+        return .offline
+    }
+    return .requestFailed
+}
+
 /// Performs an authenticated GET against an account and returns the status and raw body.
 func apiGet(_ path: String, account: MCPAccount, query: [URLQueryItem] = []) async throws -> APIResponse {
     try Task.checkCancellation()
@@ -54,16 +91,23 @@ func apiGet(_ path: String, account: MCPAccount, query: [URLQueryItem] = []) asy
         throw CancellationError()
     } catch {
         try Task.checkCancellation()
-        return APIResponse(status: 0, body: "Request to \(path) failed: \(error.localizedDescription)")
+        return transportFailureResponse(classifyTransportError(error))
     }
 }
 
 func toolResult(_ response: APIResponse) -> CallTool.Result {
     guard response.ok else {
+        if response.status == 0 {
+            let category = TransportFailureCategory(rawValue: response.body) ?? .requestFailed
+            return errorResult("Transport failure: \(category.rawValue)")
+        }
         return errorResult(sanitizedHTTPErrorMessage(status: response.status, body: response.body))
     }
-    guard isValidJSON(response.data) else {
+    guard isValidJSONObjectOrArray(response.data) else {
         return errorResult("CoderPad returned an invalid JSON response.")
+    }
+    if let message = apiErrorEnvelopeMessage(in: response.data) {
+        return errorResult(message)
     }
 
     return CallTool.Result(content: [.text(text: response.body, annotations: nil, _meta: nil)], isError: nil)
@@ -78,7 +122,7 @@ func apiSend(
 ) async throws -> APIResponse {
     try Task.checkCancellation()
     guard let payload = try? JSONSerialization.data(withJSONObject: body) else {
-        return APIResponse(status: 0, body: "Could not encode the request body.")
+        return transportFailureResponse(.encodingFailed)
     }
 
     do {
@@ -89,7 +133,7 @@ func apiSend(
         throw CancellationError()
     } catch {
         try Task.checkCancellation()
-        return APIResponse(status: 0, body: "Request to \(path) failed: \(error.localizedDescription)")
+        return transportFailureResponse(classifyTransportError(error))
     }
 }
 
@@ -98,15 +142,12 @@ func apiSend(
 func screenGet(_ path: String, account: MCPAccount, query: [URLQueryItem] = []) async throws -> APIResponse {
     try Task.checkCancellation()
     guard let key = account.screenAPIKey else {
-        return APIResponse(
-            status: 0,
-            body: "Screen is not configured for account \"\(account.name)\".",
-        )
+        return transportFailureResponse(.screenNotConfigured)
     }
     guard var comps = URLComponents(
         url: account.screenBaseURL.appending(path: screenAPIPrefix + path), resolvingAgainstBaseURL: false,
     ) else {
-        return APIResponse(status: 0, body: "Could not build a URL for \(path).")
+        return transportFailureResponse(.invalidURL)
     }
 
     let items = query.filter { ($0.value ?? "").isEmpty == false }
@@ -114,7 +155,7 @@ func screenGet(_ path: String, account: MCPAccount, query: [URLQueryItem] = []) 
         comps.queryItems = items
     }
     guard let url = comps.url else {
-        return APIResponse(status: 0, body: "Could not build a URL for \(path).")
+        return transportFailureResponse(.invalidURL)
     }
 
     var request = URLRequest(url: url)
@@ -131,6 +172,6 @@ func screenGet(_ path: String, account: MCPAccount, query: [URLQueryItem] = []) 
         throw CancellationError()
     } catch {
         try Task.checkCancellation()
-        return APIResponse(status: 0, body: "Request to \(path) failed: \(error.localizedDescription)")
+        return transportFailureResponse(classifyTransportError(error))
     }
 }
