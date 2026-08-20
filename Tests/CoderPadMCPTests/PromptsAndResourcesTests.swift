@@ -134,6 +134,28 @@ struct PromptsTests {
     }
 
     @Test
+    func `compare_pads requires at least two distinct pads`() {
+        #expect(throws: PromptError.invalidArgument(
+            name: "pad_ids",
+            reason: "must contain at least 2 distinct pads",
+        )) {
+            try renderPrompt(name: "compare_pads", arguments: ["pad_ids": "only-one"])
+        }
+        #expect(throws: PromptError.invalidArgument(
+            name: "pad_ids",
+            reason: "must not contain duplicate pad identifiers",
+        )) {
+            try renderPrompt(name: "compare_pads", arguments: ["pad_ids": "abc, abc"])
+        }
+        #expect(throws: PromptError.invalidArgument(
+            name: "pad_ids",
+            reason: "must not contain duplicate pad identifiers",
+        )) {
+            try renderPrompt(name: "compare_pads", arguments: ["pad_ids": "a, b, a"])
+        }
+    }
+
+    @Test
     func `draft_question folds in optional language and difficulty`() throws {
         let result = try renderPrompt(
             name: "draft_question",
