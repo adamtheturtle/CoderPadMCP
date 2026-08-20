@@ -250,6 +250,11 @@ public enum MCPConfigError: Error, Equatable, LocalizedError {
             "account \"\(account)\" is missing its \"api_key\"."
         case let .duplicateName(name):
             "two accounts share the name \"\(name)\"; names must be unique."
+        case let .duplicateID(id):
+            "two accounts share the stable id \"\(id)\"; ids must be unique."
+        case let .selectorCollision(id, name):
+            "account id \"\(id)\" collides with another account's name \"\(name)\"; "
+                + "ids and names must not overlap across accounts."
         case let .multipleDefaultAccounts(names):
             "multiple accounts are marked as default ("
                 + names.joined(separator: ", ") + "); mark only one as the default."
