@@ -172,6 +172,28 @@ struct PromptsTests {
     }
 
     @Test
+    func `draft_question rejects unsupported difficulty values`() throws {
+        #expect(throws: PromptError.invalidArgument(
+            name: "difficulty",
+            reason: "must be one of: easy, medium, hard",
+        )) {
+            try renderPrompt(
+                name: "draft_question",
+                arguments: ["topic": "graphs", "difficulty": "nightmare"],
+            )
+        }
+        let result = try renderPrompt(
+            name: "draft_question",
+            arguments: ["topic": "graphs", "difficulty": "HARD"],
+        )
+        guard case let .text(text) = try #require(result.messages.first).content else {
+            Issue.record("expected text content")
+            return
+        }
+        #expect(text.contains("Difficulty: hard."))
+    }
+
+    @Test
     func `a missing required argument throws missingArgument`() {
         #expect(throws: PromptError.missingArgument("pad_id")) {
             try renderPrompt(name: "review_pad_code", arguments: nil)

@@ -201,6 +201,29 @@ struct ArgumentTests {
         #expect(writeStringBudgetValidationError(
             ["contents": .string("small")], fields: ["contents"],
         ) == nil)
+
+        // Foundation JSONSerialization escapes `/` as `\/`; the estimator must match (#161).
+        let slashHeavy = String(repeating: "/", count: (maxMCPWriteBodyBytes - 256) / 2)
+        #expect(writeStringBudgetValidationError(
+            ["contents": .string(slashHeavy)], fields: ["contents"],
+        ) == "The write body must be at most \(maxMCPWriteBodyBytes) JSON bytes.")
+        #expect(jsonEncodedStringByteCount("/") == 4)
+    }
+
+    @Test
+    func `wrong-typed write strings are distinguished from absent values`() {
+        #expect(strictWriteString(nil, "title") == .absent)
+        #expect(strictWriteString(["title": .string("ok")], "title") == .value("ok"))
+        #expect(strictWriteString(["title": .bool(true)], "title") == .invalid)
+        #expect(strictWriteString(["title": .null], "title") == .invalid)
+        #expect(invalidWriteStringArgument(
+            ["title": .string("ok"), "notes": .bool(false)],
+            names: ["title", "notes"],
+        ) == "notes")
+        #expect(unknownWriteArgumentError(
+            ["dryrun": .bool(true), "title": .string("x")],
+            allowed: ["title", "dry_run"],
+        ) == "Unknown argument: dryrun.")
     }
 
     @Test
@@ -329,8 +352,18 @@ struct ToolCatalogTests {
         #expect(try property("title", of: "update_pad")["minLength"] as? Int == 1)
         #expect(try property("title", of: "update_pad")["maxLength"] as? Int == maxPadTitleCharacters)
         #expect(try property("language", of: "create_pad")["enum"] as? [String] == creatablePadLanguages)
-        #expect(try property("contents", of: "create_pad")["maxLength"] as? Int == maxMCPWriteFieldBytes)
-        #expect(try property("description", of: "create_question")["maxLength"] as? Int == maxMCPWriteFieldBytes)
+        #expect(try property("language", of: "update_pad")["enum"] as? [String] == creatablePadLanguages)
+        #expect(try property("language", of: "create_question")["enum"] as? [String] == creatablePadLanguages)
+        #expect(try property("contents", of: "create_pad")["maxLength"] == nil)
+        #expect(try property("description", of: "create_question")["maxLength"] == nil)
+        #expect(
+            try (property("contents", of: "create_pad")["description"] as? String)?
+                .contains("UTF-8 bytes") == true,
+        )
+        #expect(try property("title", of: "create_question")["minLength"] as? Int == 1)
+        #expect(try property("max_file_chars", of: "get_pad_code")["minimum"] as? Int == 1)
+        #expect(try property("team_id", of: "create_pad")["minLength"] as? Int == 36)
+        #expect(try inputSchema(of: "create_pad")["additionalProperties"] as? Bool == false)
     }
 
     @Test

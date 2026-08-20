@@ -30,21 +30,58 @@ public func strictDryRunArgument(_ arguments: [String: Value]?) -> StrictDryRunV
     }
 }
 
-/// Reads a present string-like write argument without trimming or erasing an
-/// explicitly empty value.
-public func presentWriteString(_ arguments: [String: Value]?, _ name: String) -> String? {
-    guard let value = arguments?[name] else { return nil }
+/// Distinguishes an absent write string from a present value that cannot be decoded
+/// as a string-like scalar, so wrong-typed optionals are rejected instead of dropped.
+public enum StrictWriteStringValue: Equatable, Sendable {
+    case absent
+    case value(String)
+    case invalid
+}
+
+public func strictWriteString(_ arguments: [String: Value]?, _ name: String) -> StrictWriteStringValue {
+    guard let value = arguments?[name] else { return .absent }
 
     switch value {
     case let .string(string):
-        return string
+        return .value(string)
     case let .int(int):
-        return String(int)
+        return .value(String(int))
     case let .double(double):
-        return String(double)
+        return .value(String(double))
     default:
-        return nil
+        return .invalid
     }
+}
+
+/// Reads a present string-like write argument without trimming or erasing an
+/// explicitly empty value.
+public func presentWriteString(_ arguments: [String: Value]?, _ name: String) -> String? {
+    if case let .value(string) = strictWriteString(arguments, name) {
+        return string
+    }
+
+    return nil
+}
+
+/// Returns the first present write field whose value is not a string-like scalar.
+public func invalidWriteStringArgument(
+    _ arguments: [String: Value]?,
+    names: some Sequence<String>,
+) -> String? {
+    names.first { strictWriteString(arguments, $0) == .invalid }
+}
+
+/// Rejects misspelled or undeclared write arguments (e.g. `dryrun`) before a live
+/// mutation can proceed under an absent `dry_run` (#158).
+public func unknownWriteArgumentError(
+    _ arguments: [String: Value]?,
+    allowed: Set<String>,
+) -> String? {
+    guard let arguments else { return nil }
+    let unknown = arguments.keys.filter { !allowed.contains($0) }.sorted()
+    guard let first = unknown.first else { return nil }
+
+    return "Unknown argument: \(first)."
 }
 
 /// Numeric identifiers and paging values must not silently change value during
@@ -96,12 +133,13 @@ public func writeStringBudgetValidationError(
     return nil
 }
 
-private func jsonEncodedStringByteCount(_ value: String) -> Int {
+/// Matches `JSONSerialization`'s string encoding, including escaped solidus (`\/`).
+func jsonEncodedStringByteCount(_ value: String) -> Int {
     2 + value.unicodeScalars.reduce(into: 0) { count, scalar in
         switch scalar.value {
         case 0 ... 0x1F:
             count += 6
-        case 0x22, 0x5C:
+        case 0x22, 0x5C, 0x2F:
             count += 2
         default:
             count += String(scalar).utf8.count

@@ -178,6 +178,88 @@ struct ProviderDispatchTests {
         #expect(!text.contains("CODERPAD_MCP_ALLOW_WRITES"))
     }
 
+    @Test
+    func `create_pad dry run maps owner_email to user_email`() async throws {
+        let provider = try writeProvider { _, _, _, _, _, _ in
+            APIResponse(status: 500, body: "should not run")
+        }
+
+        let result = try await provider.callTool("create_pad", arguments: [
+            "title": .string("Interview"),
+            "owner_email": .string("owner@example.com"),
+            "language": .string("python"),
+            "dry_run": .bool(true),
+        ])
+        #expect(result.isError != true)
+        let body = try #require(try dryRunBody(result))
+        #expect(body["user_email"] as? String == "owner@example.com")
+        #expect(body["owner_email"] == nil)
+        #expect(body["language"] as? String == "python")
+    }
+
+    @Test
+    func `misspelled dry_run never reaches the network`() async throws {
+        let provider = try writeProvider { _, _, _, _, _, _ in
+            APIResponse(status: 500, body: "should not run")
+        }
+
+        let result = try await provider.callTool("create_pad", arguments: [
+            "title": .string("Interview"),
+            "dryrun": .bool(true),
+        ])
+        #expect(result.isError == true)
+        guard case let .text(text, _, _)? = result.content.first else {
+            Issue.record("Expected a text error result")
+            return
+        }
+        #expect(text.contains("Unknown argument: dryrun"))
+    }
+
+    @Test
+    func `wrong-typed write fields are rejected before mutation`() async throws {
+        let provider = try writeProvider { _, _, _, _, _, _ in
+            APIResponse(status: 500, body: "should not run")
+        }
+
+        let result = try await provider.callTool("update_pad", arguments: [
+            "pad": .string("ABC123"),
+            "title": .string("Renamed"),
+            "notes": .bool(true),
+        ])
+        #expect(result.isError == true)
+        guard case let .text(text, _, _)? = result.content.first else {
+            Issue.record("Expected a text error result")
+            return
+        }
+        #expect(text == "notes must be a string.")
+    }
+
+    private func writeProvider(request: @escaping InterviewRequest) throws -> CoderPadProvider {
+        let account = try MCPAccount(
+            name: "Acme",
+            apiKey: "secret",
+            baseURL: #require(URL(string: "https://app.coderpad.io")),
+            screenAPIKey: nil,
+            screenRegion: "us",
+            allowWrites: true,
+        )
+        return CoderPadProvider(
+            accountSet: MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: true),
+            interviewRequest: request,
+        )
+    }
+
+    private func dryRunBody(_ result: CallTool.Result) throws -> [String: Any] {
+        guard case let .text(text, _, _)? = result.content.first,
+              let data = text.data(using: .utf8),
+              let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let body = object["body"] as? [String: Any]
+        else {
+            throw NSError(domain: "test", code: 1)
+        }
+        return body
+    }
+
     private func provider(request: @escaping InterviewRequest) throws -> CoderPadProvider {
         let account = try MCPAccount(
             name: "Acme",
