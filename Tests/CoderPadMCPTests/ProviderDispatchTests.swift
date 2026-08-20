@@ -621,7 +621,6 @@ struct ProviderDispatchTests {
         #expect(text.contains("truncated") || !text.contains(String(repeating: "x", count: 1000)))
     }
 
-
     private func requiredKeys(of tool: Tool) -> [String] {
         guard case let .object(schema) = tool.inputSchema,
               case let .array(required)? = schema["required"]

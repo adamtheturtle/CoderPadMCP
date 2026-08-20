@@ -237,4 +237,3 @@ private func promptAccountToolArgument(_ arguments: [String: String]?) throws ->
 
     return ", account: \"\(trimmed)\""
 }
-
