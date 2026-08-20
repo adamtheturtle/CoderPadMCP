@@ -17,4 +17,6 @@ jobs:
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode_26.5.app
       - name: Build documentation
-        run: swift package generate-documentation --target CoderPadMCP
+        run: |
+          swift package generate-documentation --target CoderPadMCP
+          swift package generate-documentation --target CoderPadToolCore

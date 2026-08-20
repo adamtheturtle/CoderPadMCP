@@ -102,6 +102,82 @@ struct ProviderDispatchTests {
         #expect(await probe.cancellations() == 1)
     }
 
+    @Test
+    func `global write denial names the host switch`() async throws {
+        let account = try MCPAccount(
+            name: "Acme",
+            apiKey: "secret",
+            baseURL: #require(URL(string: "https://app.coderpad.io")),
+            screenAPIKey: nil,
+            screenRegion: "us",
+            allowWrites: true,
+        )
+        let provider = CoderPadProvider(
+            accountSet: MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: false),
+            interviewRequest: { _, _, _, _, _, _ in
+                APIResponse(status: 500, body: "should not run")
+            },
+        )
+
+        let result = try await provider.callTool("create_question", arguments: [
+            "title": .string("Title"),
+            "language": .string("python"),
+            "description": .string("Desc"),
+        ])
+        #expect(result.isError == true)
+        guard case let .text(text, _, _)? = result.content.first else {
+            Issue.record("Expected a text error result")
+            return
+        }
+        #expect(text.contains("disabled globally"))
+        #expect(text.contains("CODERPAD_MCP_ALLOW_WRITES"))
+        #expect(!text.contains("account \"Acme\""))
+    }
+
+    @Test
+    func `per-account write denial names the account switch`() async throws {
+        let denied = try MCPAccount(
+            name: "Acme",
+            apiKey: "secret",
+            baseURL: #require(URL(string: "https://app.coderpad.io")),
+            screenAPIKey: nil,
+            screenRegion: "us",
+            allowWrites: false,
+        )
+        let allowed = try MCPAccount(
+            name: "Other",
+            apiKey: "secret-2",
+            baseURL: #require(URL(string: "https://app.coderpad.io")),
+            screenAPIKey: nil,
+            screenRegion: "us",
+            allowWrites: true,
+        )
+        let provider = CoderPadProvider(
+            accountSet: MCPAccountSet(
+                accounts: [denied, allowed],
+                defaultName: denied.name,
+                allowWrites: true,
+            ),
+            interviewRequest: { _, _, _, _, _, _ in
+                APIResponse(status: 500, body: "should not run")
+            },
+        )
+
+        let result = try await provider.callTool("create_question", arguments: [
+            "title": .string("Title"),
+            "language": .string("python"),
+            "description": .string("Desc"),
+        ])
+        #expect(result.isError == true)
+        guard case let .text(text, _, _)? = result.content.first else {
+            Issue.record("Expected a text error result")
+            return
+        }
+        #expect(text.contains("account \"Acme\""))
+        #expect(text.contains("global writes are already enabled"))
+        #expect(!text.contains("CODERPAD_MCP_ALLOW_WRITES"))
+    }
+
     private func provider(request: @escaping InterviewRequest) throws -> CoderPadProvider {
         let account = try MCPAccount(
             name: "Acme",
