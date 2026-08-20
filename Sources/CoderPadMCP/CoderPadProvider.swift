@@ -59,11 +59,12 @@ private func writesDisabled(accountSet: MCPAccountSet, account: MCPAccount) -> C
 }
 
 private func unknownAccount(_ requested: String?, accountSet: MCPAccountSet) -> CallTool.Result {
-    let names = accountSet.accounts.map(\.name).joined(separator: ", ")
+    let names = accountSet.accounts.map { "\($0.id) (\($0.name))" }.joined(separator: ", ")
+    let shown = boundedDiagnostic(requested ?? "")
     return CallTool.Result(
         content: [.text(
-            text: "No account matches \"\(requested ?? "")\". Available accounts: \(names). "
-                + "Use list_accounts to see them.",
+            text: "No account matches \"\(shown)\". Available accounts: \(names). "
+                + "Prefer a stable id from list_accounts.",
             annotations: nil, _meta: nil,
         )],
         isError: true,
@@ -179,9 +180,13 @@ public struct CoderPadProvider: MCPToolProvider {
     }
 
     public func tools() async -> [Tool] {
-        availableTools(
-            screenEnabled: accountSet.anyScreenEnabled,
-            writesEnabled: accountSet.anyWritesEnabled,
+        let screenEnabled = accountSet.anyScreenEnabled
+        let writesEnabled = accountSet.anyWritesEnabled
+        return availableTools(
+            screenEnabled: screenEnabled,
+            writesEnabled: writesEnabled,
+            requireAccountForScreen: screenEnabled && !accountSet.defaultScreenEnabled,
+            requireAccountForWrites: writesEnabled && !accountSet.defaultWritesEnabled,
         )
     }
 
@@ -201,6 +206,25 @@ public struct CoderPadProvider: MCPToolProvider {
 
         // Resolve the target account up front so every tool gives the same clear error.
         let requestedAccount = stringArgument(arguments, "account")
+        let accountRequiredForScreen = coderPadScreenToolNames.contains(name)
+            && accountSet.anyScreenEnabled
+            && !accountSet.defaultScreenEnabled
+        let accountRequiredForWrites = writeToolNames.contains(name)
+            && accountSet.anyWritesEnabled
+            && !accountSet.defaultWritesEnabled
+        if (accountRequiredForScreen || accountRequiredForWrites),
+           requestedAccount?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false
+        {
+            let reason = accountRequiredForScreen
+                ? "the default account has no Screen key"
+                : "writes are disabled on the default account"
+            let result = errorResult(
+                "account is required because \(reason). Pass a stable id from list_accounts.",
+            )
+            record(name: name, account: nil, result: result)
+            return result
+        }
+
         guard let account = accountSet.resolve(requestedAccount) else {
             let result = unknownAccount(requestedAccount, accountSet: accountSet)
             record(name: name, account: nil, result: result)
@@ -237,7 +261,8 @@ public struct CoderPadProvider: MCPToolProvider {
         let failureReason: String? = if result.isError == true,
                                         case let .text(text, _, _)? = result.content.first
         {
-            text
+            // Activity logs must not retain unbounded caller-controlled fragments (#169).
+            boundedDiagnostic(text, limit: maxDiagnosticSnippetBytes)
         } else {
             nil
         }
@@ -269,7 +294,7 @@ public struct CoderPadProvider: MCPToolProvider {
 
     public func readResource(_ uri: String) async throws -> ReadResource.Result {
         guard let request = parseResourceURI(uri) else {
-            throw MCPError.invalidParams("Unknown resource URI: \(uri)")
+            throw MCPError.invalidParams("Unknown resource URI: \(boundedDiagnostic(uri))")
         }
 
         let account: MCPAccount = switch resolveResourceAccount(request, accountSet: accountSet) {
@@ -286,7 +311,9 @@ public struct CoderPadProvider: MCPToolProvider {
             )
 
         case let .unknownAccount(name):
-            throw MCPError.invalidParams("No account matches resource selector \"\(name)\".")
+            throw MCPError.invalidParams(
+                "No account matches resource selector \"\(boundedDiagnostic(name))\".",
+            )
         }
         return try await ProviderRequestContext.$interviewRequest.withValue(interviewRequest) {
             try await readCoderPadResource(request.unqualified, uri: uri, account: account)
@@ -556,23 +583,28 @@ private func screenTestQuery(_ arguments: [String: Value]?, candidateEmail: Stri
 
 /// Reports which account/org this server acts as, without the API key: the account
 /// name, the org name (fetched from `/api/organization`), the base URL, and whether
-/// Screen and writes are enabled.
+/// Screen and writes are enabled. Organization lookup failures propagate as tool
+/// errors so a bad key is not reported as a successful identity (#145).
 private func whoami(account: MCPAccount, writesEnabled: Bool) async throws -> CallTool.Result {
-    var info: [String: Any] = [
+    let org = try await apiGet("/api/organization", account: account)
+    guard org.ok else { return toolResult(org) }
+    guard let object = jsonObject(org.data) else {
+        return errorResult("CoderPad returned an invalid JSON organization response.")
+    }
+    guard let organizationName = object["organization_name"] as? String,
+          !organizationName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    else {
+        return errorResult("Organization response did not include organization_name.")
+    }
+
+    return jsonResult([
         "account": account.name,
+        "account_id": account.id,
+        "organization_name": organizationName,
         "base_url": account.baseURL.absoluteString,
         "screen_configured": account.screenEnabled,
         "writes_enabled": writesEnabled,
-    ]
-
-    let org = try await apiGet("/api/organization", account: account)
-    if org.ok, let object = jsonObject(org.data), let name = object["organization_name"] as? String {
-        info["organization_name"] = name
-    } else {
-        info["organization_note"] = "Could not fetch the organization name from the API."
-    }
-
-    return jsonResult(info)
+    ])
 }
 
 // MARK: - get_pad_code (#499)

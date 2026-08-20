@@ -487,6 +487,142 @@ struct ProviderDispatchTests {
         #expect(text == "notes must be a string.")
     }
 
+    @Test
+    func `whoami fails when organization lookup fails`() async throws {
+        let provider = try provider { _, path, _, _, _, _ in
+            #expect(path == "/api/organization")
+            return APIResponse(status: 401, body: #"{"error":"unauthorized"}"#)
+        }
+
+        let result = try await provider.callTool("whoami", arguments: nil)
+        #expect(result.isError == true)
+        guard case let .text(text, _, _)? = result.content.first else {
+            Issue.record("Expected a text error result")
+            return
+        }
+        #expect(text.contains("HTTP 401"))
+        #expect(!text.contains("organization_note"))
+    }
+
+    @Test
+    func `screen tools require account when the default lacks Screen`() async throws {
+        let https = try #require(URL(string: "https://app.coderpad.io"))
+        let plain = try MCPAccount(
+            id: "plain", name: "Plain", apiKey: "a", baseURL: https,
+            screenAPIKey: nil, screenRegion: "us",
+        )
+        let screen = try MCPAccount(
+            id: "screen", name: "Screen", apiKey: "b", baseURL: https,
+            screenAPIKey: "screen-key", screenRegion: "us",
+        )
+        let provider = CoderPadProvider(
+            accountSet: try MCPAccountSet(
+                accounts: [plain, screen],
+                defaultName: plain.id,
+                allowWrites: false,
+            ),
+            interviewRequest: { _, _, _, _, _, _ in
+                APIResponse(status: 500, body: "should not run")
+            },
+        )
+
+        let tools = await provider.tools()
+        let screenTool = try #require(tools.first { $0.name == "screen_list_campaigns" })
+        #expect(requiredKeys(of: screenTool).contains("account"))
+
+        let omitted = try await provider.callTool("screen_list_campaigns", arguments: nil)
+        #expect(omitted.isError == true)
+        guard case let .text(text, _, _)? = omitted.content.first else {
+            Issue.record("Expected a text error result")
+            return
+        }
+        #expect(text.contains("account is required"))
+    }
+
+    @Test
+    func `write tools require account when the default denies writes`() async throws {
+        let https = try #require(URL(string: "https://app.coderpad.io"))
+        let denied = try MCPAccount(
+            id: "denied", name: "Denied", apiKey: "a", baseURL: https,
+            screenAPIKey: nil, screenRegion: "us", allowWrites: false,
+        )
+        let allowed = try MCPAccount(
+            id: "allowed", name: "Allowed", apiKey: "b", baseURL: https,
+            screenAPIKey: nil, screenRegion: "us", allowWrites: true,
+        )
+        let provider = CoderPadProvider(
+            accountSet: try MCPAccountSet(
+                accounts: [denied, allowed],
+                defaultName: denied.id,
+                allowWrites: true,
+            ),
+            interviewRequest: { _, _, _, _, _, _ in
+                APIResponse(status: 500, body: "should not run")
+            },
+        )
+
+        let tools = await provider.tools()
+        let create = try #require(tools.first { $0.name == "create_question" })
+        #expect(requiredKeys(of: create).contains("account"))
+
+        let omitted = try await provider.callTool("create_question", arguments: [
+            "title": .string("Title"),
+        ])
+        #expect(omitted.isError == true)
+        guard case let .text(text, _, _)? = omitted.content.first else {
+            Issue.record("Expected a text error result")
+            return
+        }
+        #expect(text.contains("account is required"))
+    }
+
+    @Test
+    func `invalid resource URI errors bound oversized caller input`() async throws {
+        let provider = try provider { _, _, _, _, _, _ in
+            APIResponse(status: 500, body: "unused")
+        }
+        let huge = "coderpad://" + String(repeating: "a", count: 2_000_000)
+        do {
+            _ = try await provider.readResource(huge)
+            Issue.record("Expected invalidParams")
+        } catch let error as MCPError {
+            let text = String(describing: error)
+            #expect(text.contains("truncated") || text.utf8.count < huge.utf8.count)
+            #expect(text.utf8.count < 4096)
+        }
+    }
+
+    @Test
+    func `unknown account errors bound oversized selectors`() async throws {
+        let provider = try provider { _, _, _, _, _, _ in
+            APIResponse(status: 500, body: "unused")
+        }
+        let huge = String(repeating: "x", count: 50_000)
+        let result = try await provider.callTool("whoami", arguments: ["account": .string(huge)])
+        #expect(result.isError == true)
+        guard case let .text(text, _, _)? = result.content.first else {
+            Issue.record("Expected a text error result")
+            return
+        }
+        #expect(text.utf8.count < huge.utf8.count)
+        #expect(text.contains("truncated") || !text.contains(String(repeating: "x", count: 1000)))
+    }
+
+
+    private func requiredKeys(of tool: Tool) -> [String] {
+        guard case let .object(schema) = tool.inputSchema,
+              case let .array(required)? = schema["required"]
+        else { return [] }
+
+        return required.compactMap {
+            if case let .string(value) = $0 {
+                value
+            } else {
+                nil
+            }
+        }
+    }
+
     private func writeProvider(request: @escaping InterviewRequest) throws -> CoderPadProvider {
         let account = try MCPAccount(
             name: "Acme",

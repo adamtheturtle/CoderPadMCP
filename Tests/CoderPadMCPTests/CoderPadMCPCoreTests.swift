@@ -338,6 +338,36 @@ struct ToolCatalogTests {
     }
 
     @Test
+    func `account selectors declare a maxLength and prefer stable ids`() throws {
+        let schema = try property("account", of: "whoami")
+        #expect(schema["maxLength"] as? Int == maxAccountSelectorCharacters)
+        #expect((schema["description"] as? String)?.contains("stable id") == true)
+
+        let listAccounts = tool("list_accounts")
+        #expect(listAccounts.description?.contains("stable id") == true)
+    }
+
+    @Test
+    func `screen and write tools can require account when defaults cannot invoke them`() throws {
+        let descriptors = coderPadToolDescriptors(
+            screenEnabled: true,
+            writesEnabled: true,
+            requireAccountForScreen: true,
+            requireAccountForWrites: true,
+        )
+        let screen = try #require(descriptors.first { $0["name"] as? String == "screen_list_campaigns" })
+        let create = try #require(descriptors.first { $0["name"] as? String == "create_pad" })
+        let screenRequired = try #require(
+            (screen["inputSchema"] as? [String: Any])?["required"] as? [String],
+        )
+        let createRequired = try #require(
+            (create["inputSchema"] as? [String: Any])?["required"] as? [String],
+        )
+        #expect(screenRequired.contains("account"))
+        #expect(createRequired.contains("account"))
+    }
+
+    @Test
     func `pagination schemas declare numeric bounds`() throws {
         #expect(try property("page", of: "list_pads")["minimum"] as? Int == 1)
         #expect(try property("page", of: "list_questions")["minimum"] as? Int == 1)

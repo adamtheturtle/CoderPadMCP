@@ -17,6 +17,13 @@ import MCPKit
 public let maxComparedPads = 10
 public let maxComparePadIDsBytes = 1024
 
+private let promptAccountArgument = Prompt.Argument(
+    name: "account",
+    description: "Stable account id from list_accounts (preferred), or a unique display name. "
+        + "Required in multi-account setups so tool calls target the right organization.",
+    required: false,
+)
+
 /// The prompt catalog advertised by `prompts/list`.
 public let interviewPrompts: [Prompt] = [
     Prompt(
@@ -25,6 +32,7 @@ public let interviewPrompts: [Prompt] = [
         description: "Review the code in a CoderPad interview pad for correctness, clarity, edge cases, and complexity.",
         arguments: [
             Prompt.Argument(name: "pad_id", description: "The pad id / slug to review.", required: true),
+            promptAccountArgument,
         ],
     ),
     Prompt(
@@ -33,6 +41,7 @@ public let interviewPrompts: [Prompt] = [
         description: "Summarize what happened in an interview pad: the problem, the candidate's approach, and the outcome.",
         arguments: [
             Prompt.Argument(name: "pad_id", description: "The pad id / slug to summarize.", required: true),
+            promptAccountArgument,
         ],
     ),
     Prompt(
@@ -45,6 +54,7 @@ public let interviewPrompts: [Prompt] = [
                 description: "Comma-separated pad ids / slugs to compare.",
                 required: true,
             ),
+            promptAccountArgument,
         ],
     ),
     Prompt(
@@ -70,13 +80,14 @@ public func renderPrompt(name: String, arguments: [String: String]?) throws -> G
     switch name {
     case "review_pad_code":
         let padID = try requiredPromptPadID(arguments)
+        let accountArg = try promptAccountToolArgument(arguments)
         return GetPrompt.Result(
             description: "Review the code in pad \(padID).",
             messages: [userPromptMessage("""
             Review the code in CoderPad pad "\(padID)".
 
-            First call the get_pad_code tool with pad: "\(padID)" to read every file, and \
-            get_pad with pad: "\(padID)" for the surrounding context (title, language, participants).
+            First call the get_pad_code tool with pad: "\(padID)"\(accountArg) to read every file, and \
+            get_pad with pad: "\(padID)"\(accountArg) for the surrounding context (title, language, participants).
 
             Then give a focused review covering:
             - Correctness: does it solve the stated problem? Any bugs or unhandled edge cases?
@@ -90,13 +101,14 @@ public func renderPrompt(name: String, arguments: [String: String]?) throws -> G
 
     case "summarize_pad":
         let padID = try requiredPromptPadID(arguments)
+        let accountArg = try promptAccountToolArgument(arguments)
         return GetPrompt.Result(
             description: "Summarize pad \(padID).",
             messages: [userPromptMessage("""
             Summarize the CoderPad interview pad "\(padID)".
 
-            Call get_pad with pad: "\(padID)" for title, language, participants, and status, and \
-            get_pad_code with pad: "\(padID)" for the code. There is no events tool; do not claim \
+            Call get_pad with pad: "\(padID)"\(accountArg) for title, language, participants, and status, and \
+            get_pad_code with pad: "\(padID)"\(accountArg) for the code. There is no events tool; do not claim \
             a step-by-step timeline you cannot observe. Infer approach, progress, and outcome only \
             from the pad metadata and code, and say when evidence is missing. Keep it to a few \
             tight paragraphs.
@@ -106,15 +118,19 @@ public func renderPrompt(name: String, arguments: [String: String]?) throws -> G
     case "compare_pads":
         let ids = try requiredPromptArgument(arguments, "pad_ids")
         let list = try comparedPadIDs(ids)
+        let accountArg = try promptAccountToolArgument(arguments)
 
         let quoted = list.map { "\"\($0)\"" }.joined(separator: ", ")
+        let accountInstruction = accountArg.isEmpty
+            ? ""
+            : " Include\(accountArg) on every tool call."
         return GetPrompt.Result(
             description: "Compare pads \(list.joined(separator: ", ")).",
             messages: [userPromptMessage("""
             Compare these CoderPad pads to help rank the candidates: \(quoted).
 
             For each pad, call get_pad and get_pad_code with the pad argument set to that pad's id \
-            to read its code and context. Then compare \
+            to read its code and context.\(accountInstruction) Then compare \
             them on correctness, code quality, problem-solving approach, and communication signals \
             you can infer. Finish with a ranked recommendation and the reasoning behind it.
             """)],
@@ -199,3 +215,26 @@ private func validatedDraftQuestionDifficulty(_ raw: String?) throws -> String? 
     }
     return normalized
 }
+
+/// Returns `, account: "…"` for inclusion in generated tool-call instructions, or "" when
+/// the optional account selector is omitted (#141).
+private func promptAccountToolArgument(_ arguments: [String: String]?) throws -> String {
+    guard let raw = promptArgument(arguments, "account") else { return "" }
+
+    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return "" }
+    guard trimmed.count <= maxAccountSelectorCharacters,
+          trimmed.utf8.count <= maxAccountSelectorUTF8Bytes,
+          !trimmed.contains("\""),
+          !trimmed.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }),
+          trimmed != ".", trimmed != ".."
+    else {
+        throw PromptError.invalidArgument(
+            name: "account",
+            reason: "must be a safe account id or unique display name",
+        )
+    }
+
+    return ", account: \"\(trimmed)\""
+}
+
