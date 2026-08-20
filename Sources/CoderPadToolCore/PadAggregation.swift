@@ -65,10 +65,7 @@ public func nextPageContinuation(_ value: Any?) -> NextPageContinuation {
         return number > 0 ? .page(String(number)) : .malformed
 
     case let number as NSNumber:
-        // Foundation bridges Bool through NSNumber; reject those before numeric reads.
-        if CFGetTypeID(number) == CFBooleanGetTypeID() {
-            return .malformed
-        }
+        // JSON booleans are rejected by the Bool check above; numeric NSNumbers remain.
         let value = number.doubleValue
         guard value.isFinite, value > 0, value.rounded() == value,
               value <= Double(Int64.max)
@@ -140,10 +137,8 @@ public struct RecordIdentityTracker: Sendable {
         // JSON true/false bridge to Int under Foundation; reject Bool before numeric
         // identity so a boolean id cannot collide with the real record whose id is 1
         // (#170, #171).
+        // `is Bool` also matches boolean NSNumbers on Apple platforms.
         if question["id"] is Bool {
-            return .invalid
-        }
-        if let number = question["id"] as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID() {
             return .invalid
         }
         let identity: String? = if let value = question["id"] as? Int, value > 0 {
@@ -163,9 +158,6 @@ public struct RecordIdentityTracker: Sendable {
 
     private func stableIdentity(_ raw: Any?) -> String? {
         if raw is Bool {
-            return nil
-        }
-        if let number = raw as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID() {
             return nil
         }
         if let value = validatedPadID(raw as? String) {
