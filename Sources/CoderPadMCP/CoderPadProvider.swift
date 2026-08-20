@@ -596,15 +596,19 @@ private func padCodeJSON(id: String, maxFileChars: Int?, account: MCPAccount) as
     }
 
     // Fetch in bounded concurrent batches, retaining source order in the result (#2260, #42).
+    // Parse and release each batch before fetching the next so one call cannot retain
+    // ~100 × 8 MiB of raw environment bodies at once (#178).
     let ids = environmentIDs(in: pad)
     if let error = environmentCountValidationError(ids) {
         throw MCPError.internalError(error)
     }
-    // The response bodies cross the task boundary, not the parsed objects:
-    // `[String: Any]` is not Sendable, so parsing happens on the collecting side.
-    var bodies: [Int: Data] = [:]
+    var environments: [PadCodeEnvironment] = []
+    var failedEnvironmentIDs: [Int] = []
     for batchStart in stride(from: 0, to: ids.count, by: maxConcurrentPadCodeEnvironmentRequests) {
         let offsets = batchStart ..< min(batchStart + maxConcurrentPadCodeEnvironmentRequests, ids.count)
+        // The response bodies cross the task boundary, not the parsed objects:
+        // `[String: Any]` is not Sendable, so parsing happens on the collecting side.
+        var batchBodies: [Int: Data] = [:]
         try await withThrowingTaskGroup(of: (offset: Int, body: Data?).self) { group in
             for offset in offsets {
                 group.addTask {
@@ -613,20 +617,17 @@ private func padCodeJSON(id: String, maxFileChars: Int?, account: MCPAccount) as
                 }
             }
             for try await result in group {
-                bodies[result.offset] = result.body
+                batchBodies[result.offset] = result.body
             }
         }
-    }
-
-    var environments: [PadCodeEnvironment] = []
-    var failedEnvironmentIDs: [Int] = []
-    for (offset, environmentID) in ids.enumerated() {
-        guard let body = bodies[offset], let object = jsonObject(body) else {
-            failedEnvironmentIDs.append(environmentID)
-            continue
+        for offset in offsets {
+            let environmentID = ids[offset]
+            guard let body = batchBodies[offset], let object = jsonObject(body) else {
+                failedEnvironmentIDs.append(environmentID)
+                continue
+            }
+            environments.append(PadCodeEnvironment(id: environmentID, object: object))
         }
-
-        environments.append(PadCodeEnvironment(id: environmentID, object: object))
     }
 
     let payload = padCodePayload(

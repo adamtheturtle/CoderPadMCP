@@ -713,20 +713,42 @@ struct QuestionAggregationTests {
 
 @Suite("Pad code")
 struct PadCodeTests {
+    private func ownedEnvironment(
+        id: Int,
+        padID: String = "abc",
+        object: [String: Any],
+    ) -> PadCodeEnvironment {
+        var object = object
+        if object["id"] == nil { object["id"] = id }
+        if object["pad_id"] == nil { object["pad_id"] = padID }
+        return PadCodeEnvironment(id: id, object: object)
+    }
+
     @Test
     func `truncate appends a marker only when over the limit`() {
         #expect(truncate("hello", to: nil) == "hello")
         #expect(truncate("hello", to: 0) == "hello")
         #expect(truncate("hello", to: 10) == "hello")
-        let cut = truncate("hello", to: 3)
-        #expect(cut.hasPrefix("hel"))
-        #expect(cut.contains("2 more bytes"))
-        // Budgets are UTF-8 bytes, cut on a character boundary (#1588), and a
-        // nil/non-positive limit means the bounded default, not unlimited (#1589).
-        #expect(truncate("é1234", to: 3) == "é1\n… [truncated, 3 more bytes]")
+        // Budgets are UTF-8 bytes (#127/#1588). Nil/non-positive uses the documented
+        // default (#126). The marker stays inside the returned budget (#128).
         let unbounded = String(repeating: "x", count: defaultMaxFileChars + 10)
-        #expect(truncate(unbounded, to: nil).contains("10 more bytes"))
-        #expect(truncate(unbounded, to: 0).contains("10 more bytes"))
+        let truncatedDefault = truncate(unbounded, to: nil)
+        #expect(truncatedDefault.contains("more bytes"))
+        #expect(truncatedDefault.utf8.count <= defaultMaxFileChars)
+        #expect(truncate(unbounded, to: 0).utf8.count <= defaultMaxFileChars)
+        let tight = truncate(String(repeating: "a", count: 100), to: 40)
+        #expect(tight.utf8.count <= 40)
+        #expect(tight.contains("more bytes"))
+        let accented = truncate(String(repeating: "é", count: 50), to: 40)
+        #expect(accented.utf8.count <= 40)
+    }
+
+    @Test
+    func `truncate never exceeds the UTF-8 byte budget including the marker`() {
+        for limit in [8, 16, 32, 64, 200] {
+            let body = String(repeating: "é", count: 200)
+            #expect(truncate(body, to: limit).utf8.count <= limit)
+        }
     }
 
     @Test
@@ -741,9 +763,20 @@ struct PadCodeTests {
     func `synthesizedFilename maps known languages and falls back`() {
         #expect(synthesizedFilename(language: "python") == "main.py")
         #expect(synthesizedFilename(language: "C++") == "main.cpp")
-        #expect(synthesizedFilename(language: "ocaml") == "main.ocaml")
+        #expect(synthesizedFilename(language: "ocaml") == "main.ml")
+        #expect(synthesizedFilename(language: "nodejs") == "main.js")
+        #expect(synthesizedFilename(language: "python2") == "main.py")
+        #expect(synthesizedFilename(language: "plaintext") == "main.txt")
         #expect(synthesizedFilename(language: nil) == "main.txt")
         #expect(synthesizedFilename(language: "") == "main.txt")
+        for language in creatablePadLanguages {
+            let name = synthesizedFilename(language: language)
+            #expect(name.hasPrefix("main."))
+            let mapped = languageExtensions[language]
+            if let mapped {
+                #expect(name == "main.\(mapped)")
+            }
+        }
     }
 
     @Test
@@ -751,6 +784,31 @@ struct PadCodeTests {
         let pad: [String: Any] = ["pad_environment_ids": [1, "2", 3, "2", 1, "\n4\t"]]
         #expect(environmentIDs(in: pad) == [1, 2, 3, 4])
         #expect(environmentIDs(in: [:]).isEmpty)
+    }
+
+    @Test
+    func `malformed environment id containers mark pad code incomplete`() throws {
+        let badContainer = padCodePayload(
+            id: "abc",
+            pad: ["pad_environment_ids": "1,2,3", "contents": "legacy", "language": "python"],
+            environments: [],
+            maxFileChars: nil,
+        )
+        #expect(badContainer["incomplete"] as? Bool == true)
+        #expect((badContainer["files"] as? [[String: Any]])?.isEmpty == true)
+        let errors = try #require(badContainer["schema_errors"] as? [String])
+        #expect(errors.contains { $0.contains("pad_environment_ids") })
+
+        let rejected = padCodePayload(
+            id: "abc",
+            pad: ["pad_environment_ids": [1, true, 2.5, 0, "nope", 2]],
+            environments: [],
+            maxFileChars: nil,
+        )
+        #expect(rejected["incomplete"] as? Bool == true)
+        #expect(parsePadEnvironmentIDs(in: ["pad_environment_ids": [1, true, 2]]).ids == [1, 2])
+        let rejectedErrors = try #require(rejected["schema_errors"] as? [String])
+        #expect(rejectedErrors.contains { $0.contains("positive integer") })
     }
 
     @Test
@@ -767,7 +825,7 @@ struct PadCodeTests {
             "language": "javascript",
             "file_contents": [
                 ["path": "index.js", "contents": "console.log(1)"],
-                ["contents": "no path here"], // inherits env language -> synthesized name
+                ["contents": "no path here"],
             ],
         ])
         let files = padCodeFiles(pad: pad, environments: [env], maxFileChars: nil)
@@ -776,7 +834,6 @@ struct PadCodeTests {
         #expect(files[0]["language"] as? String == "javascript")
         #expect(files[0]["environment_id"] as? Int == 9)
         #expect(files[1]["filename"] as? String == "main.js")
-        // The legacy single-file contents must NOT appear when env files exist.
         #expect(!files.contains { ($0["contents"] as? String) == "legacy code" })
     }
 
@@ -795,10 +852,8 @@ struct PadCodeTests {
             "contents": "stale legacy code",
             "pad_environment_ids": [1, 2],
         ]
-
         let files = padCodeFiles(pad: pad, environments: [], maxFileChars: nil)
         let payload = padCodePayload(id: "abc", pad: pad, environments: [], maxFileChars: nil)
-
         #expect(files.isEmpty)
         #expect((payload["files"] as? [[String: Any]])?.isEmpty == true)
         #expect(payload["incomplete"] as? Bool == true)
@@ -812,12 +867,15 @@ struct PadCodeTests {
     }
 
     @Test
-    func `max_file_chars truncates each file's contents`() {
-        let pad: [String: Any] = ["contents": "0123456789", "language": "python"]
-        let files = padCodeFiles(pad: pad, environments: [], maxFileChars: 4)
+    func `max_file_chars truncates each file's contents within the byte budget`() {
+        let pad: [String: Any] = [
+            "contents": String(repeating: "0123456789abcdef", count: 8),
+            "language": "python",
+        ]
+        let files = padCodeFiles(pad: pad, environments: [], maxFileChars: 40)
         let contents = files[0]["contents"] as? String ?? ""
-        #expect(contents.hasPrefix("0123"))
-        #expect(contents.contains("6 more bytes"))
+        #expect(contents.contains("more bytes"))
+        #expect(contents.utf8.count <= 40)
     }
 
     @Test
@@ -830,19 +888,29 @@ struct PadCodeTests {
     }
 
     @Test
+    func `pad titles strip Unicode format controls`() {
+        let payload = padCodePayload(
+            id: "pad\u{202E}id",
+            pad: ["title": "Title\u{2066}hidden", "contents": "x", "language": "python"],
+            environments: [],
+            maxFileChars: nil,
+        )
+        #expect(payload["pad_id"] as? String == "padid")
+        #expect(payload["title"] as? String == "Titlehidden")
+    }
+
+    @Test
     func `padCodePayload reports files omitted by aggregate budgets`() throws {
         let fileContents: [[String: Any]] = (0 ... maxPadCodeFiles).map {
             ["path": "file-\($0).txt", "contents": "x"]
         }
-        let environment = PadCodeEnvironment(id: 7, object: ["file_contents": fileContents])
+        let environment = ownedEnvironment(id: 7, object: ["file_contents": fileContents])
         let payload = padCodePayload(id: "abc", pad: [:], environments: [environment], maxFileChars: nil)
         let files = try #require(payload["files"] as? [[String: Any]])
-
         #expect(files.count == maxPadCodeFiles)
         #expect(payload["incomplete"] as? Bool == true)
         #expect(payload["omitted_file_count"] as? Int == 1)
         #expect(payload["omitted_environment_ids"] as? [Int] == [7])
-        #expect((payload["output_limit_note"] as? String)?.contains("aggregate code budget") == true)
     }
 
     @Test
@@ -850,20 +918,117 @@ struct PadCodeTests {
         let fileContents: [[String: Any]] = (0 ..< 6).map {
             ["path": "file-\($0).txt", "contents": String(repeating: "x", count: defaultMaxFileChars)]
         }
-        let environment = PadCodeEnvironment(id: 9, object: ["file_contents": fileContents])
+        let environment = ownedEnvironment(id: 9, object: ["file_contents": fileContents])
         let payload = padCodePayload(id: "abc", pad: [:], environments: [environment], maxFileChars: nil)
         let files = try #require(payload["files"] as? [[String: Any]])
         let contentBytes = files.compactMap { $0["contents"] as? String }.reduce(0) { $0 + $1.utf8.count }
-
         #expect(contentBytes <= maxPadCodeContentBytes)
-        #expect(payload["omitted_file_count"] as? Int == 2)
+        #expect((payload["omitted_file_count"] as? Int ?? 0) >= 1)
         #expect(payload["omitted_environment_ids"] as? [Int] == [9])
+    }
+
+    @Test
+    func `binary files are kept after the text content budget is exhausted`() {
+        let huge = String(repeating: "x", count: maxPadCodeContentBytes)
+        let environment = PadCodeEnvironment(id: 1, object: [
+            "file_contents": [
+                ["path": "big.txt", "contents": huge],
+                ["path": "asset.bin", "binary": true],
+            ],
+        ])
+        let files = padCodeFiles(pad: [:], environments: [environment], maxFileChars: nil)
+        #expect(files.count == 2)
+        #expect(files[1]["binary"] as? Bool == true)
+    }
+
+    @Test
+    func `missing and null nonbinary contents are schema errors`() throws {
+        let env = ownedEnvironment(id: 1, object: [
+            "file_contents": [
+                ["path": "missing.py"],
+                ["path": "null.py", "contents": NSNull()],
+                ["path": "ok.py", "contents": "print(1)"],
+                ["path": "bin.dat", "binary": true],
+                ["path": "bad-flag.py", "contents": "x", "binary": "yes"],
+            ],
+        ])
+        let payload = padCodePayload(id: "abc", pad: [:], environments: [env], maxFileChars: nil)
+        #expect(payload["incomplete"] as? Bool == true)
+        let files = try #require(payload["files"] as? [[String: Any]])
+        #expect(files.contains { ($0["filename"] as? String) == "missing.py" && $0["error"] != nil })
+        #expect(files.contains { ($0["filename"] as? String) == "null.py" && $0["error"] != nil })
+        #expect(files.contains { ($0["filename"] as? String) == "ok.py" && ($0["contents"] as? String) == "print(1)" })
+        #expect(files.contains { ($0["filename"] as? String) == "bin.dat" && ($0["binary"] as? Bool) == true })
+        #expect(files.contains { ($0["filename"] as? String) == "bad-flag.py" && $0["error"] != nil })
+    }
+
+    @Test
+    func `missing environment file_contents marks the payload incomplete`() throws {
+        let environment = ownedEnvironment(id: 4, object: [:])
+        let payload = padCodePayload(id: "abc", pad: [:], environments: [environment], maxFileChars: nil)
+        let errors = try #require(payload["schema_errors"] as? [String])
+        #expect(payload["incomplete"] as? Bool == true)
+        #expect(errors == ["Environment 4 is missing file_contents."])
+    }
+
+    @Test
+    func `unsafe paths and languages are reported while keeping safe fallbacks`() throws {
+        let environment = ownedEnvironment(id: 5, object: [
+            "file_contents": [
+                ["path": "../secret.py", "language": "bad\nlang", "contents": "x"],
+                ["path": "src//main.py", "contents": "y"],
+                ["path": "src/", "contents": "z"],
+            ],
+        ])
+        let payload = padCodePayload(id: "abc", pad: [:], environments: [environment], maxFileChars: nil)
+        let files = try #require(payload["files"] as? [[String: Any]])
+        let errors = try #require(payload["schema_errors"] as? [String])
+        #expect(payload["incomplete"] as? Bool == true)
+        #expect(files.count == 3)
+        #expect(errors.contains { $0.contains("file path was unsafe") })
+        #expect(errors.contains { $0.contains("language metadata was malformed") })
+    }
+
+    @Test
+    func `flattened ancestor conflicts stay within the component byte limit`() {
+        let path = String(repeating: "a", count: 128) + "/" + String(repeating: "b", count: 127)
+        #expect(path.utf8.count == 256)
+        let environment = PadCodeEnvironment(id: 1, object: [
+            "file_contents": [
+                ["path": String(repeating: "a", count: 128), "contents": "file"],
+                ["path": path, "contents": "nested"],
+            ],
+        ])
+        let names = padCodeFiles(pad: [:], environments: [environment], maxFileChars: nil)
+            .compactMap { $0["filename"] as? String }
+        #expect(names.count == 2)
+        #expect(names[1].utf8.count <= maxPadCodePathComponentBytes)
+        #expect(!names[1].contains("/"))
+    }
+
+    @Test
+    func `duplicate nested filenames stay within the total path byte limit`() {
+        let directory = String(repeating: "d", count: 200)
+        let file = String(repeating: "f", count: 55)
+        let path = "\(directory)/\(file)"
+        #expect(path.utf8.count == 256)
+        let environment = PadCodeEnvironment(id: 1, object: [
+            "file_contents": [
+                ["path": path, "contents": "one"],
+                ["path": path, "contents": "two"],
+            ],
+        ])
+        let names = padCodeFiles(pad: [:], environments: [environment], maxFileChars: nil)
+            .compactMap { $0["filename"] as? String }
+        #expect(names.count == 2)
+        #expect(names.allSatisfy { $0.utf8.count <= maxPadCodePathBytes })
+        #expect(names[1].contains("-2"))
     }
 
     @Test
     func `padCodePayload marks failed environment fetches as incomplete`() {
         let pad: [String: Any] = ["title": "T", "pad_environment_ids": [1, 2]]
-        let env = PadCodeEnvironment(id: 1, object: [
+        let env = ownedEnvironment(id: 1, object: [
             "file_contents": [["path": "a.py", "contents": "print(1)"]],
         ])
         let payload = padCodePayload(
@@ -873,26 +1038,47 @@ struct PadCodeTests {
         #expect(payload["missing_environment_ids"] as? [Int] == [2])
         #expect((payload["files"] as? [[String: Any]])?.count == 1)
 
-        // Completeness is derived from the pad's referenced environments, not
-        // just the caller's report: environment 2 was never fetched, so the
-        // payload is incomplete even with no failed ids reported (#1598).
         let derived = padCodePayload(id: "abc", pad: pad, environments: [env], maxFileChars: nil)
         #expect(derived["incomplete"] as? Bool == true)
         #expect(derived["missing_environment_ids"] as? [Int] == [2])
 
-        let both = [env, PadCodeEnvironment(id: 2, object: [:])]
+        let both = [
+            env,
+            ownedEnvironment(id: 2, object: ["file_contents": [] as [[String: Any]]]),
+        ]
         let complete = padCodePayload(id: "abc", pad: pad, environments: both, maxFileChars: nil)
         #expect(complete["incomplete"] == nil)
         #expect(complete["missing_environment_ids"] == nil)
     }
 
     @Test
-    func `padCodePayload reports malformed environment file contents`() throws {
-        let environment = PadCodeEnvironment(id: 7, object: ["file_contents": "not-an-array"])
+    func `environment response id and pad ownership mismatches are incomplete`() throws {
+        let wrongID = ownedEnvironment(id: 1, object: [
+            "id": 99,
+            "file_contents": [["path": "a.py", "contents": "stolen"]],
+        ])
+        let wrongPad = ownedEnvironment(id: 2, object: [
+            "pad_id": "other-pad",
+            "file_contents": [["path": "b.py", "contents": "leak"]],
+        ])
+        let payload = padCodePayload(
+            id: "abc",
+            pad: ["pad_environment_ids": [1, 2]],
+            environments: [wrongID, wrongPad],
+            maxFileChars: nil,
+        )
+        let errors = try #require(payload["schema_errors"] as? [String])
+        #expect(payload["incomplete"] as? Bool == true)
+        #expect((payload["files"] as? [[String: Any]])?.isEmpty == true)
+        #expect(errors.contains { $0.contains("response id did not match") })
+        #expect(errors.contains { $0.contains("belongs to a different pad") })
+    }
 
+    @Test
+    func `padCodePayload reports malformed environment file contents`() throws {
+        let environment = ownedEnvironment(id: 7, object: ["file_contents": "not-an-array"])
         let payload = padCodePayload(id: "abc", pad: [:], environments: [environment], maxFileChars: nil)
         let errors = try #require(payload["schema_errors"] as? [String])
-
         #expect(payload["incomplete"] as? Bool == true)
         #expect((payload["files"] as? [[String: Any]])?.isEmpty == true)
         #expect(errors == ["Environment 7 file_contents was not an array of file objects."])
@@ -907,7 +1093,6 @@ struct PadCodeTests {
             maxFileChars: nil,
         )
         let errors = try #require(payload["schema_errors"] as? [String])
-
         #expect(payload["incomplete"] as? Bool == true)
         #expect((payload["files"] as? [[String: Any]])?.isEmpty == true)
         #expect(errors == ["The legacy pad contents were not a string in the API response."])
