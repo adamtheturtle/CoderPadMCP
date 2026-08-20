@@ -178,7 +178,7 @@ private func accountNamesEqual(_ lhs: String, _ rhs: String) -> Bool {
 private let maximumAccountNameUTF8Bytes = 256
 
 /// Why a configuration couldn't be turned into a usable account set.
-public enum MCPConfigError: Error, Equatable {
+public enum MCPConfigError: Error, Equatable, LocalizedError {
     case noAccounts
     case tooManyAccounts(limit: Int)
     case missingAPIKey(account: String)
@@ -194,10 +194,41 @@ public enum MCPConfigError: Error, Equatable {
     case invalidScreenRegion(account: String, region: String)
     case invalidBaseURL(account: String, baseURL: String)
     case invalidCredential(account: String, field: String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .noAccounts:
+            "no accounts configured. Set CODERPAD_API_KEY, or point "
+                + "CODERPAD_MCP_CONFIG at a config file with an \"accounts\" array."
+        case let .tooManyAccounts(limit):
+            "the account configuration exceeds the \(limit)-account limit."
+        case let .missingAPIKey(account):
+            "account \"\(account)\" is missing its \"api_key\"."
+        case let .duplicateName(name):
+            "two accounts share the name \"\(name)\"; names must be unique."
+        case let .multipleDefaultAccounts(names):
+            "multiple accounts are marked as default ("
+                + names.joined(separator: ", ") + "); mark only one as the default."
+        case .noDefaultAccount:
+            "a config with multiple accounts must mark one as the default."
+        case let .invalidDefaultFlag(account):
+            "account \"\(account)\" has a non-Boolean \"default\" value."
+        case .invalidAllowWrites:
+            "\"allow_writes\" must be a JSON boolean (true or false)."
+        case let .invalidScreenRegion(account, region):
+            "account \"\(account)\" has unsupported screen_region \"\(region)\"."
+        case let .invalidBaseURL(account, baseURL):
+            "account \"\(account)\" has unsupported base_url \"\(baseURL)\"."
+        case let .invalidCredential(account, field):
+            "account \"\(account)\" has an invalid \"\(field)\" value."
+        }
+    }
 }
 
 /// Why the standalone JSON config file could not be loaded.
 public enum MCPConfigLoadError: Error, Equatable, LocalizedError {
+    /// `CODERPAD_MCP_CONFIG` is present but does not name a path after trimming.
+    case emptyConfigPath
     case missingConfig(path: String)
     case permissionDenied(path: String)
     case notRegularFile(path: String)
@@ -212,6 +243,8 @@ public enum MCPConfigLoadError: Error, Equatable, LocalizedError {
 
     public var errorDescription: String? {
         switch self {
+        case .emptyConfigPath:
+            "CODERPAD_MCP_CONFIG is set but empty; provide a config file path or unset the variable."
         case let .missingConfig(path):
             "Config file does not exist at \(path)."
         case let .permissionDenied(path):
@@ -235,6 +268,18 @@ public enum MCPConfigLoadError: Error, Equatable, LocalizedError {
         case let .nonObjectConfig(path):
             "Config file at \(path) must contain a JSON object."
         }
+    }
+}
+
+/// Formats a configuration-loading failure for the standalone `coderpad-mcp` CLI's stderr.
+public func configurationFailureMessage(_ error: Error) -> String {
+    switch error {
+    case let error as MCPConfigError:
+        "coderpad-mcp: \(error.localizedDescription)\n"
+    case let error as MCPConfigLoadError:
+        "coderpad-mcp: \(error.localizedDescription)\n"
+    default:
+        "coderpad-mcp: could not load the account configuration: \(error.localizedDescription)\n"
     }
 }
 
@@ -368,13 +413,25 @@ private func expandedConfigURL(_ path: String, homeDirectory: URL) -> URL {
 /// Reads the standalone server's JSON config file, if one is present. Missing default
 /// config falls back to env credentials; explicit config paths fail fast on any load
 /// or parse problem so the server never silently switches accounts.
+///
+/// Secure loading uses POSIX descriptor checks (`O_NOFOLLOW`, ownership, mode bits, and
+/// ACL probes) rather than `FileManager`, so this API does not accept a filesystem
+/// dependency that could not honor those guarantees.
 public func loadConfigObject(
     environment: [String: String],
-    fileManager _: FileManager = .default,
     homeDirectory: URL = URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true),
 ) throws -> [String: Any]? {
     let maximumConfigBytes = 1_048_576
-    let explicitPath = trimmedNonEmpty(environment["CODERPAD_MCP_CONFIG"])
+    let explicitPath: String?
+    if let rawPath = environment["CODERPAD_MCP_CONFIG"] {
+        let trimmed = rawPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            throw MCPConfigLoadError.emptyConfigPath
+        }
+        explicitPath = trimmed
+    } else {
+        explicitPath = nil
+    }
     let url: URL = if let explicitPath {
         expandedConfigURL(explicitPath, homeDirectory: homeDirectory)
     } else {
