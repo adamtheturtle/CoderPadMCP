@@ -21,6 +21,11 @@ struct ConfigurationFailureTests {
              "coderpad-mcp: account \"Acme\" is missing its \"api_key\".\n"),
             (.duplicateName("acme"),
              "coderpad-mcp: two accounts share the name \"acme\"; names must be unique.\n"),
+            (.duplicateID("shared"),
+             "coderpad-mcp: two accounts share the stable id \"shared\"; ids must be unique.\n"),
+            (.selectorCollision(id: "Beta", name: "Beta"),
+             "coderpad-mcp: account id \"Beta\" collides with another account's name \"Beta\"; "
+                 + "ids and names must not overlap across accounts.\n"),
             (.multipleDefaultAccounts(["Acme", "Beta"]),
              "coderpad-mcp: multiple accounts are marked as default (Acme, Beta); "
                  + "mark only one as the default.\n"),

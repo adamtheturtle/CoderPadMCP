@@ -14,7 +14,18 @@ import MCP
 import MCPKit
 
 /// The tools to advertise, built from the shared catalog: Screen tools appear only when
-/// Screen is configured, write tools only when writes are opted in.
-public func availableTools(screenEnabled: Bool, writesEnabled: Bool) -> [Tool] {
-    mcpTools(from: coderPadToolDescriptors(screenEnabled: screenEnabled, writesEnabled: writesEnabled))
+/// Screen is configured, write tools only when writes are opted in. When those gated
+/// tools cannot succeed on the default account, their `account` argument is required.
+public func availableTools(
+    screenEnabled: Bool,
+    writesEnabled: Bool,
+    requireAccountForScreen: Bool = false,
+    requireAccountForWrites: Bool = false,
+) -> [Tool] {
+    mcpTools(from: coderPadToolDescriptors(
+        screenEnabled: screenEnabled,
+        writesEnabled: writesEnabled,
+        requireAccountForScreen: requireAccountForScreen,
+        requireAccountForWrites: requireAccountForWrites,
+    ))
 }

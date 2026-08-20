@@ -36,16 +36,16 @@ Add the `CoderPadMCP` product to an application target, or install and run the b
 import CoderPadMCP
 import MCPKit
 
-let account = MCPAccount(
+let account = try MCPAccount(
     name: "Acme",
     apiKey: apiKey,
     baseURL: URL(string: "https://app.coderpad.io")!,
     screenAPIKey: nil,
     screenRegion: "us"
 )
-let accounts = MCPAccountSet(
+let accounts = try MCPAccountSet(
     accounts: [account],
-    defaultName: account.name,
+    defaultName: account.id,
     allowWrites: false
 )
 let provider = CoderPadProvider(accountSet: accounts)

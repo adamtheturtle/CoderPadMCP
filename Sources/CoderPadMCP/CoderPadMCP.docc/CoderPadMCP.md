@@ -13,9 +13,9 @@ account set enables writes. CoderPad Screen tools appear only when at least one 
 has Screen credentials.
 
 ```swift
-let accounts = MCPAccountSet(
+let accounts = try MCPAccountSet(
     accounts: [
-        MCPAccount(
+        try MCPAccount(
             name: "Acme",
             apiKey: apiKey,
             baseURL: URL(string: "https://app.coderpad.io")!,
