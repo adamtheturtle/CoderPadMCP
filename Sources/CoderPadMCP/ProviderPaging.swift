@@ -149,9 +149,6 @@ private func reportedListTotal(_ value: Any?) -> Int? {
         return number
     }
     if let number = value as? NSNumber {
-        if CFGetTypeID(number) == CFBooleanGetTypeID() {
-            return nil
-        }
         let doubleValue = number.doubleValue
         guard doubleValue.isFinite, doubleValue >= 0, doubleValue.rounded() == doubleValue,
               doubleValue <= Double(Int.max)
