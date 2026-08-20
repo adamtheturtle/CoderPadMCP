@@ -445,7 +445,9 @@ private func iso8601Date(from value: String) -> Date? {
 /// Rejects impossible timezone offsets such as `+24:00` or `+99:99` before Foundation
 /// normalizes them into unrelated instants.
 private func hasValidISO8601Offset(_ value: String) -> Bool {
-    if value.hasSuffix("Z") || value.hasSuffix("z") { return true }
+    if value.hasSuffix("Z") || value.hasSuffix("z") {
+        return true
+    }
     guard let index = value.lastIndex(where: { $0 == "+" || $0 == "-" }),
           index > value.startIndex,
           value[..<index].contains(where: { $0 == "T" || $0 == "t" })
@@ -750,12 +752,16 @@ public func compactPads(_ pads: [[String: Any]]) -> [[String: Any]] {
 
 /// Bounded scalar pagination metadata for compact list tools.
 public func compactPaginationMetadata(_ value: Any?) -> Any? {
-    if value is Bool || value is NSNull { return nil }
+    if value is Bool || value is NSNull {
+        return nil
+    }
     if let string = value as? String {
         return compactScalar(string)
     }
     if let number = value as? NSNumber {
-        if isBooleanNSNumber(number) { return nil }
+        if isBooleanNSNumber(number) {
+            return nil
+        }
         let doubleValue = number.doubleValue
         guard doubleValue.isFinite,
               doubleValue >= Double(Int64.min),

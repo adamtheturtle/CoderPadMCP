@@ -140,7 +140,7 @@ public func renderPrompt(name: String, arguments: [String: String]?) throws -> G
         let topic = try requiredPromptArgument(arguments, "topic")
         let language = try optionalPromptArgument(arguments, "language")
         let difficulty = try validatedDraftQuestionDifficulty(
-            try optionalPromptArgument(arguments, "difficulty")
+            optionalPromptArgument(arguments, "difficulty"),
         )
         var constraints = ""
         if let language {
@@ -239,4 +239,3 @@ private func promptAccountToolArgument(_ arguments: [String: String]?) throws ->
 
     return ", account: \"\(trimmed)\""
 }
-
