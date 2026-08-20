@@ -1,13 +1,13 @@
 {
-  "originHash" : "4754026c6a02e9ea1bef46bfa9af6551e5fd313ef9b3abc5688220f574afc1f5",
+  "originHash" : "b441360813d362702f549e9cf6e2f65bac5ecf585e65ee86575ec1c987472ba0",
   "pins" : [
     {
       "identity" : "coderpadkit",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/adamtheturtle/CoderPadKit.git",
       "state" : {
-        "revision" : "63ada59a0675d783753d1e41b2068707cd0b213d",
-        "version" : "0.5.13"
+        "revision" : "e5d2e6b31a4cfe29aeeacb082003f6c483ce7a57",
+        "version" : "0.5.14"
       }
     },
     {

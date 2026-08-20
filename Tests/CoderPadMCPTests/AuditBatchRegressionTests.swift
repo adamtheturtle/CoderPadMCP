@@ -132,7 +132,7 @@ struct AuditBatchRegressionTests {
         #expect(sentinels.counts[aggregateLiteralPrefix + aggregateLiteralPrefix + "x"] == 1)
 
         var accumulation = AggregateAccumulation()
-        let pads = (0 ..< (maxAggregateGroups + 5)).map { ["language": "lang-\($0)"] }
+        let pads = (0 ..< (CoderPadToolCore.maxAggregateGroups + 5)).map { ["language": "lang-\($0)"] }
         accumulateCounts(&accumulation, pads: pads, field: "language")
         #expect(accumulation.counts[aggregateOverflowGroup] != nil)
         #expect(accumulation.distinctGroups > accumulation.counts.count)

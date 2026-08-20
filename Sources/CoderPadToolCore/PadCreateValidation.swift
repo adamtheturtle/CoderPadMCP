@@ -8,18 +8,21 @@
 import Foundation
 
 public let maxPadTitleCharacters = 255
+/// UTF-8 safety bound for titles: at most four bytes per Unicode scalar (#162).
+public let maxPadTitleUTF8Bytes = maxPadTitleCharacters * 4
 public let maxOwnerEmailBytes = 254
 /// Matches `CoderPadKit.ScreenClient.maximumEmailFilterLength` for Screen list filters.
 public let maxScreenCandidateEmailCharacters = 320
 public let maxMCPWriteFieldBytes = 512 * 1024
 public let maxMCPWriteBodyBytes = 1024 * 1024
 
+/// Languages and frameworks documented by the Interview API `#Languages` section.
 public let creatablePadLanguages = [
-    "python3", "python2", "javascript", "typescript", "nodejs", "swift", "go", "rust",
-    "java", "kotlin", "scala", "ruby", "c", "cpp", "csharp", "objective-c", "php", "r",
-    "sql", "mysql", "postgresql", "bash", "shell", "elixir", "erlang", "haskell", "perl",
-    "lua", "dart", "clojure", "ocaml", "fsharp", "julia", "solidity", "tcl", "verilog",
-    "html", "css", "markdown", "plaintext",
+    "angular", "bash", "c", "clojure", "coffeescript", "cpp", "csharp", "django",
+    "elixir", "erlang", "fsharp", "gin", "haskell", "html", "java", "javascript",
+    "julia", "kotlin", "lua", "markdown", "node", "objc", "ocaml", "perl", "php",
+    "plaintext", "postgresql", "python", "rails", "react", "ruby", "rust", "spring",
+    "svelte", "swift", "tcl", "typescript", "vb", "vue",
 ]
 
 public func validatedCreatePadLanguage(_ language: String?) -> String? {
@@ -35,10 +38,19 @@ public func createPadLanguageValidationError(_ language: String?) -> String? {
     return "language must be one of: \(creatablePadLanguages.joined(separator: ", "))."
 }
 
+/// Rejects titles that exceed the API's 255 Unicode-scalar limit or the matching UTF-8
+/// safety bound. Uses scalar count (not grapheme clusters) so combining-character
+/// stacks cannot bypass the advertised limit (#162).
 public func padTitleValidationError(_ title: String?) -> String? {
-    guard let title, title.count > maxPadTitleCharacters else { return nil }
+    guard let title else { return nil }
+    guard title.unicodeScalars.count <= maxPadTitleCharacters else {
+        return "title must be at most \(maxPadTitleCharacters) characters."
+    }
+    guard title.utf8.count <= maxPadTitleUTF8Bytes else {
+        return "title must be at most \(maxPadTitleUTF8Bytes) UTF-8 bytes."
+    }
 
-    return "title must be at most \(maxPadTitleCharacters) characters."
+    return nil
 }
 
 public func padUpdateTitleValidationError(_ title: String?) -> String? {
@@ -48,6 +60,17 @@ public func padUpdateTitleValidationError(_ title: String?) -> String? {
     }
 
     return padTitleValidationError(title)
+}
+
+/// Question titles have no separate API character cap beyond the write-field budget;
+/// reject blank values so updates and creates cannot replace a title with whitespace.
+public func questionTitleValidationError(_ title: String?) -> String? {
+    guard let title else { return nil }
+    guard !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        return "title must not be empty or whitespace-only."
+    }
+
+    return nil
 }
 
 public func ownerEmailValidationError(_ email: String?) -> String? {
@@ -80,6 +103,27 @@ public func ownerEmailValidationError(_ email: String?) -> String? {
           })
     else {
         return "owner_email must be a valid email address."
+    }
+
+    return nil
+}
+
+/// Update paths treat a present owner_email as an ownership change; empty is not a
+/// supported clearing form and must fail like any other malformed address (#101).
+public func padUpdateOwnerEmailValidationError(_ email: String?) -> String? {
+    guard let email else { return nil }
+    if email.isEmpty {
+        return "owner_email must be a valid email address."
+    }
+
+    return ownerEmailValidationError(email)
+}
+
+/// Requires a present team id to be a canonical UUID, matching the Interview API (#107).
+public func teamIDValidationError(_ teamID: String?) -> String? {
+    guard let teamID else { return nil }
+    guard UUID(uuidString: teamID) != nil else {
+        return "team_id must be a canonical UUID."
     }
 
     return nil

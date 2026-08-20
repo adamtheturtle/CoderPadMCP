@@ -79,6 +79,28 @@ import Testing
     #expect(missing == .invalid)
 }
 
+@Test func `pad record tracker rejects boolean identities without treating them as 1`() {
+    var tracker = RecordIdentityTracker()
+    let truthy = tracker.acceptPad(["id": true])
+    let real = tracker.acceptPad(["id": 1])
+    let falsy = tracker.acceptPad(["id": false])
+    let slugFallback = tracker.acceptPad(["id": true, "slug": "pad-slug"])
+    #expect(truthy == .invalid)
+    #expect(real == .accepted)
+    #expect(falsy == .invalid)
+    #expect(slugFallback == .accepted)
+}
+
+@Test func `question record tracker rejects boolean identities before colliding with 1`() {
+    var tracker = RecordIdentityTracker()
+    let truthy = tracker.acceptQuestion(["id": true])
+    let real = tracker.acceptQuestion(["id": 1])
+    let falsy = tracker.acceptQuestion(["id": false])
+    #expect(truthy == .invalid)
+    #expect(real == .accepted)
+    #expect(falsy == .invalid)
+}
+
 @Test func `aggregate fields ignore surrounding whitespace`() {
     #expect(aggregateField(for: " owner ") == "owner_email")
     #expect(questionAggregateField(for: "\n language\t") == "language")
@@ -99,6 +121,23 @@ import Testing
 @Test func `pad title validation enforces the API limit`() {
     #expect(padTitleValidationError(String(repeating: "a", count: 255)) == nil)
     #expect(padTitleValidationError(String(repeating: "a", count: 256)) == "title must be at most 255 characters.")
+    let combining = "e" + String(repeating: "\u{0301}", count: 300)
+    #expect(combining.count == 1)
+    #expect(padTitleValidationError(combining) == "title must be at most 255 characters.")
+}
+
+@Test func `question title validation rejects blank values`() {
+    #expect(questionTitleValidationError(nil) == nil)
+    #expect(questionTitleValidationError("Two Sum") == nil)
+    #expect(questionTitleValidationError("") == "title must not be empty or whitespace-only.")
+    #expect(questionTitleValidationError(" \n\t") == "title must not be empty or whitespace-only.")
+}
+
+@Test func `team id validation requires a canonical UUID`() {
+    #expect(teamIDValidationError(nil) == nil)
+    #expect(teamIDValidationError(UUID().uuidString) == nil)
+    #expect(teamIDValidationError("not-a-uuid") == "team_id must be a canonical UUID.")
+    #expect(teamIDValidationError("") == "team_id must be a canonical UUID.")
 }
 
 @Test func `pad update title validation rejects blank values`() {
@@ -127,11 +166,15 @@ import Testing
 }
 
 @Test func `create pad language validation canonicalizes supported codes`() {
-    #expect(validatedCreatePadLanguage(" Python3 \n") == "python3")
-    #expect(validatedCreatePadLanguage("OBJECTIVE-C") == "objective-c")
-    #expect(validatedCreatePadLanguage("react") == nil)
+    #expect(validatedCreatePadLanguage(" Python \n") == "python")
+    #expect(validatedCreatePadLanguage("OBJC") == "objc")
+    #expect(validatedCreatePadLanguage("react") == "react")
+    #expect(validatedCreatePadLanguage("node") == "node")
+    #expect(validatedCreatePadLanguage("python3") == nil)
+    #expect(validatedCreatePadLanguage("nodejs") == nil)
+    #expect(validatedCreatePadLanguage("objective-c") == nil)
     #expect(validatedCreatePadLanguage("definitely-not-a-language") == nil)
-    #expect(createPadLanguageValidationError("react")?.contains("python3") == true)
+    #expect(createPadLanguageValidationError("python3")?.contains("python") == true)
 }
 
 @Test func `pad filenames reject traversal and remain unique`() {

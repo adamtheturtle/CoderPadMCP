@@ -16,6 +16,9 @@ public let maxPaginationStart = 10_000_000
 /// Matches `CoderPadKit.ScreenClient.maximumPageSize` for Screen list requests.
 public let maxPaginationLimit = 500
 
+/// Sort fields documented for Interview pad and question list endpoints.
+public let pagingSortFields: Set<String> = ["created_at", "updated_at"]
+
 public func pageValidationError(_ page: Int?) -> String? {
     guard let page else { return nil }
 
@@ -47,6 +50,7 @@ public func screenPaginationValidationError(start: Int?, limit: Int?) -> String?
 /// Converts paging sort values to CoderPad's `field,direction` syntax. The
 /// leading-minus spelling was advertised by older server versions, so retain it
 /// as a compatibility alias rather than sending it upstream where it causes a 500.
+/// A bare field preserves the API's documented descending default (#109).
 public func normalizedPagingSort(_ value: String?) -> String? {
     guard let value, !value.isEmpty else { return nil }
 
@@ -57,7 +61,7 @@ public func normalizedPagingSort(_ value: String?) -> String? {
 
     let components = value.split(separator: ",", omittingEmptySubsequences: false)
     if components.count == 1, isPagingSortField(value) {
-        return "\(value),asc"
+        return "\(value),desc"
     }
     guard components.count == 2,
           isPagingSortField(String(components[0])),
@@ -72,16 +76,12 @@ public func normalizedPagingSort(_ value: String?) -> String? {
 public func pagingSortValidationError(_ value: String?) -> String? {
     guard value != nil else { return nil }
     guard normalizedPagingSort(value) != nil else {
-        return "sort must name a field, optionally followed by asc or desc, such as created_at,desc."
+        return "sort must be created_at or updated_at, optionally followed by asc or desc, "
+            + "such as created_at,desc."
     }
     return nil
 }
 
 private func isPagingSortField(_ value: String) -> Bool {
-    !value.isEmpty && value.unicodeScalars.allSatisfy {
-        (0x61 ... 0x7A).contains($0.value)
-            || (0x41 ... 0x5A).contains($0.value)
-            || (0x30 ... 0x39).contains($0.value)
-            || $0.value == 0x5F
-    }
+    pagingSortFields.contains(value)
 }
