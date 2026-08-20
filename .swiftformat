@@ -1,7 +1,7 @@
 # Repository-local configuration prevents SwiftFormat from inheriting options
 # from a parent checkout when this package is developed as a nested dependency.
 --swiftversion 6.2
---exclude .build
+--exclude .build,Tests/Fixtures
 
 # SwiftFormat merges every config found between the input and filesystem root.
 # Restore defaults for options the containing app workspace opts into so a

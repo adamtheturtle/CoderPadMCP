@@ -60,7 +60,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          fixture=Tests/Fixtures/ReleaseVersionCommentTrap.swift
+          fixture=Tests/Fixtures/ReleaseVersionCommentTrap.swift.txt
           # A comment-only match must not count; the live declaration is 0.0.0.
           if grep -Fq 'public let coderPadMCPVersion = "9.9.9"' "$fixture"; then
             :

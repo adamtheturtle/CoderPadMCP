@@ -43,15 +43,14 @@ private func missingArgument(_ name: String) -> CallTool.Result {
 }
 
 private func writesDisabled(accountSet: MCPAccountSet, account: MCPAccount) -> CallTool.Result {
-    let text: String
-    if !accountSet.allowWrites {
-        text = "Writes are disabled globally. Enable them with \"allow_writes\": true in the "
+    let text = if !accountSet.allowWrites {
+        "Writes are disabled globally. Enable them with \"allow_writes\": true in the "
             + "config (or CODERPAD_MCP_ALLOW_WRITES=1) to use the create/edit tools."
     } else if !account.allowWrites {
-        text = "Writes are disabled for account \"\(account.name)\". Set that account's "
+        "Writes are disabled for account \"\(account.name)\". Set that account's "
             + "\"allow_writes\": true in the config (global writes are already enabled)."
     } else {
-        text = "Writes are disabled for this account."
+        "Writes are disabled for this account."
     }
     return CallTool.Result(
         content: [.text(text: text, annotations: nil, _meta: nil)],
