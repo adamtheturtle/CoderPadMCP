@@ -161,7 +161,21 @@ private func comparedPadIDs(_ raw: String) throws -> [String] {
     guard values.allSatisfy({ validatedPadID($0) != nil }) else {
         throw PromptError.invalidArgument(name: "pad_ids", reason: "must contain only safe pad identifiers")
     }
-    return values.compactMap(validatedPadID)
+    let ids = values.compactMap(validatedPadID)
+    var seen = Set<String>()
+    var unique: [String] = []
+    unique.reserveCapacity(ids.count)
+    for id in ids {
+        if seen.contains(id) {
+            throw PromptError.invalidArgument(name: "pad_ids", reason: "must not contain duplicate pad identifiers")
+        }
+        seen.insert(id)
+        unique.append(id)
+    }
+    guard unique.count >= 2 else {
+        throw PromptError.invalidArgument(name: "pad_ids", reason: "must contain at least 2 distinct pads")
+    }
+    return unique
 }
 
 private func requiredPromptPadID(_ arguments: [String: String]?) throws -> String {
