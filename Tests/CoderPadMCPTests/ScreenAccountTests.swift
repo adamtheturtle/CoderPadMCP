@@ -20,7 +20,7 @@ struct ScreenAccountTests {
         for key in [nil, "", " \n\t "] as [String?] {
             let disabled = try account(key)
             #expect(!disabled.screenEnabled)
-            #expect(!MCPAccountSet(accounts: [disabled], defaultName: "Acme", allowWrites: false).anyScreenEnabled)
+            #expect(try !MCPAccountSet(accounts: [disabled], defaultName: "Acme", allowWrites: false).anyScreenEnabled)
         }
         #expect(try account(" screen-key ").screenEnabled)
     }

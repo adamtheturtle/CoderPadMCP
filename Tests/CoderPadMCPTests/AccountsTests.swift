@@ -46,6 +46,45 @@ struct AccountsTests {
     }
 
     @Test
+    func `an invalid present CODERPAD_ACCOUNT_NAME is rejected`() {
+        #expect(throws: MCPConfigError.invalidCredential(
+            account: "environment", field: "CODERPAD_ACCOUNT_NAME",
+        )) {
+            try makeAccountSet(config: nil, environment: [
+                "CODERPAD_API_KEY": "k1",
+                "CODERPAD_ACCOUNT_NAME": "\u{0007}\u{200B}",
+            ])
+        }
+        #expect(throws: MCPConfigError.invalidCredential(
+            account: "environment", field: "CODERPAD_ACCOUNT_NAME",
+        )) {
+            try makeAccountSet(config: nil, environment: [
+                "CODERPAD_API_KEY": "k1",
+                "CODERPAD_ACCOUNT_NAME": ".",
+            ])
+        }
+        #expect(throws: MCPConfigError.invalidCredential(
+            account: "environment", field: "CODERPAD_ACCOUNT_NAME",
+        )) {
+            try makeAccountSet(config: nil, environment: [
+                "CODERPAD_API_KEY": "k1",
+                "CODERPAD_ACCOUNT_NAME": "..",
+            ])
+        }
+    }
+
+    @Test
+    func `dot-segment account names are rejected`() {
+        for name in [".", ".."] {
+            #expect(throws: MCPConfigError.invalidCredential(account: "account-1", field: "name")) {
+                try makeAccountSet(config: [
+                    "accounts": [["name": name, "api_key": "key"]],
+                ], environment: [:])
+            }
+        }
+    }
+
+    @Test
     func `present account names must be nonempty strings`() {
         for name: Any in [123, "", " \n"] {
             #expect(throws: MCPConfigError.invalidCredential(account: "account-1", field: "name")) {

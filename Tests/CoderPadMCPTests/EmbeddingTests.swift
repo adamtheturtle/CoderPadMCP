@@ -21,7 +21,7 @@ struct EmbeddingTests {
     func `write authorization combines the host and account switches`() throws {
         let allowed = try account(id: "allowed", allowWrites: true)
         let denied = try account(id: "denied", allowWrites: false)
-        let enabled = MCPAccountSet(
+        let enabled = try MCPAccountSet(
             accounts: [allowed, denied],
             defaultName: allowed.name,
             allowWrites: true,
@@ -31,7 +31,7 @@ struct EmbeddingTests {
         #expect(enabled.allowsWrites(to: allowed))
         #expect(!enabled.allowsWrites(to: denied))
 
-        let disabled = MCPAccountSet(
+        let disabled = try MCPAccountSet(
             accounts: [allowed],
             defaultName: allowed.name,
             allowWrites: false,
@@ -74,7 +74,7 @@ struct EmbeddingTests {
             screenAPIKey: nil,
             screenRegion: "us",
         )
-        let set = MCPAccountSet(
+        let set = try MCPAccountSet(
             accounts: [first, second],
             defaultName: second.id,
             allowWrites: false,
@@ -124,6 +124,56 @@ struct EmbeddingTests {
         #expect(throws: MCPConfigError.invalidCredential(account: "Acme", field: "user_email")) {
             try MCPAccount(name: "Acme", userEmail: "user\u{202E}@example.com", apiKey: "key",
                            baseURL: https, screenAPIKey: nil, screenRegion: "us")
+        }
+    }
+
+    @Test
+    func `multi-account static resources use stable ids`() throws {
+        let first = try MCPAccount(
+            id: "first",
+            name: "Acme",
+            apiKey: "one",
+            baseURL: #require(URL(string: "https://app.coderpad.io")),
+            screenAPIKey: nil,
+            screenRegion: "us",
+        )
+        let second = try MCPAccount(
+            id: "second",
+            name: "Acme",
+            apiKey: "two",
+            baseURL: #require(URL(string: "https://app.coderpad.io")),
+            screenAPIKey: nil,
+            screenRegion: "us",
+        )
+        let set = try MCPAccountSet(
+            accounts: [first, second],
+            defaultName: first.id,
+            allowWrites: false,
+        )
+        let uris = staticResources(for: set).map(\.uri)
+        #expect(uris.contains("coderpad://account/first/quota"))
+        #expect(uris.contains("coderpad://account/second/organization"))
+        #expect(!uris.contains("coderpad://account/Acme/quota"))
+        #expect(Set(uris).count == uris.count)
+    }
+
+    @Test
+    func `duplicate account ids and id-name collisions are rejected`() throws {
+        let https = try #require(URL(string: "https://app.coderpad.io"))
+        let first = try MCPAccount(id: "shared", name: "Acme", apiKey: "a", baseURL: https,
+                                   screenAPIKey: nil, screenRegion: "us")
+        let duplicateID = try MCPAccount(id: "shared", name: "Beta", apiKey: "b", baseURL: https,
+                                         screenAPIKey: nil, screenRegion: "us")
+        #expect(throws: MCPConfigError.duplicateID("shared")) {
+            try MCPAccountSet(accounts: [first, duplicateID], defaultName: "shared", allowWrites: false)
+        }
+
+        let hijacker = try MCPAccount(id: "Beta", name: "Acme", apiKey: "a", baseURL: https,
+                                      screenAPIKey: nil, screenRegion: "us")
+        let victim = try MCPAccount(id: "other", name: "Beta", apiKey: "b", baseURL: https,
+                                    screenAPIKey: nil, screenRegion: "us")
+        #expect(throws: MCPConfigError.selectorCollision(id: "Beta", name: "Beta")) {
+            try MCPAccountSet(accounts: [hijacker, victim], defaultName: "other", allowWrites: false)
         }
     }
 

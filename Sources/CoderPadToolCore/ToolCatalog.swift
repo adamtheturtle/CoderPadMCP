@@ -10,7 +10,8 @@
 //  Defining a tool here means it appears, identically, on both servers.
 //
 //  Every account-scoped tool carries an optional `account` argument (the servers can act
-//  as several accounts) resolved by name against list_accounts.
+//  as several accounts) resolved by stable id (preferred) or unique display name against
+//  list_accounts.
 //
 
 import Foundation
@@ -87,9 +88,12 @@ public func mcpBoolSchema(_ description: String) -> [String: Any] {
 public let mcpAccountArgument = "account"
 
 /// Schema for the `account` argument: which configured account to target.
+/// Prefer the stable `id` from `list_accounts`; a display name works only when unique (#140).
 public nonisolated(unsafe) let mcpAccountSchema: [String: Any] =
     mcpStringSchema(
-        "Optional. Which account to use, by its name (see list_accounts). Defaults to the default account.",
+        "Which account to use. Prefer the stable id from list_accounts; a display name works "
+            + "only when it uniquely identifies one account. Defaults to the default account when omitted.",
+        maxLength: maxAccountSelectorCharacters,
     )
 
 /// Description for a created_at date-range bound argument, shared by the pad and question
@@ -102,6 +106,20 @@ public func mcpDateBoundDescription(bound: String) -> String {
 /// Adds the `account` selector to a property set.
 private func withAccount(_ properties: [String: [String: Any]] = [:]) -> [String: [String: Any]] {
     properties.merging([mcpAccountArgument: mcpAccountSchema]) { _, new in new }
+}
+
+/// Marks `account` required on a descriptor (used when the default cannot invoke a gated tool).
+public func requiringAccountArgument(_ descriptor: [String: Any]) -> [String: Any] {
+    var updated = descriptor
+    guard var schema = updated["inputSchema"] as? [String: Any] else { return descriptor }
+
+    var required = schema["required"] as? [String] ?? []
+    if !required.contains(mcpAccountArgument) {
+        required.append(mcpAccountArgument)
+    }
+    schema["required"] = required
+    updated["inputSchema"] = schema
+    return updated
 }
 
 private nonisolated(unsafe) let padFilterProperties: [String: [String: Any]] =
@@ -150,9 +168,10 @@ public nonisolated(unsafe) let coderPadReadToolDescriptors: [[String: Any]] =
     [
         mcpToolDescriptor(
             "list_accounts",
-            "List the CoderPad accounts this server can act as (name, base URL, and which is the default). "
-                + "No API keys are returned. Use a name with the `account` argument on any other tool to "
-                + "target a specific account.",
+            "List the CoderPad accounts this server can act as (stable id, name, base URL, and which is "
+                + "the default). No API keys are returned. Prefer an account's stable id with the "
+                + "`account` argument on any other tool; a display name works only when it uniquely "
+                + "identifies one account.",
         ),
         mcpToolDescriptor(
             "whoami",
@@ -180,7 +199,8 @@ public nonisolated(unsafe) let coderPadReadToolDescriptors: [[String: Any]] =
             properties: withAccount([
                 "pad": mcpStringSchema("The pad's slug or id."),
                 "max_file_chars": mcpIntSchema(
-                    "Optional. Truncate each file to this many characters.",
+                    "Optional. Truncate each file to this many UTF-8 bytes (default \(defaultMaxFileChars) "
+                        + "when omitted). The truncation marker counts toward the budget.",
                     minimum: 1,
                 ),
             ]),
@@ -433,14 +453,26 @@ public let coderPadScreenToolNames: Set<String> = [
 
 /// The full catalog to advertise: Screen tools appear only when Screen is configured, and
 /// write tools only when writes are opted in — so a client is never offered a tool it
-/// can't use.
-public func coderPadToolDescriptors(screenEnabled: Bool, writesEnabled: Bool) -> [[String: Any]] {
+/// can't use. When Screen or writes are available only on a non-default account, those
+/// tools require an explicit `account` selector (#198, #199).
+public func coderPadToolDescriptors(
+    screenEnabled: Bool,
+    writesEnabled: Bool,
+    requireAccountForScreen: Bool = false,
+    requireAccountForWrites: Bool = false,
+) -> [[String: Any]] {
     var result = coderPadReadToolDescriptors
     if screenEnabled {
-        result += coderPadScreenToolDescriptors
+        let screen = requireAccountForScreen
+            ? coderPadScreenToolDescriptors.map(requiringAccountArgument)
+            : coderPadScreenToolDescriptors
+        result += screen
     }
     if writesEnabled {
-        result += coderPadWriteToolDescriptors
+        let writes = requireAccountForWrites
+            ? coderPadWriteToolDescriptors.map(requiringAccountArgument)
+            : coderPadWriteToolDescriptors
+        result += writes
     }
     return result
 }

@@ -58,26 +58,43 @@ struct PromptsTests {
     }
 
     @Test
-    func `pad prompts name the pad tool argument`() throws {
-        let promptArguments = ["pad_id": "abc123"]
+    func `pad prompts include an optional account selector in tool instructions`() throws {
+        let withAccount = ["pad_id": "abc123", "account": "acme-id"]
         for name in ["review_pad_code", "summarize_pad"] {
-            let result = try renderPrompt(name: name, arguments: promptArguments)
+            let result = try renderPrompt(name: name, arguments: withAccount)
             guard case let .text(text) = try #require(result.messages.first).content else {
                 Issue.record("expected text content")
                 return
             }
 
-            #expect(text.contains("pad: \"abc123\""))
-            #expect(!text.contains("with id"))
+            #expect(text.contains("pad: \"abc123\", account: \"acme-id\""))
         }
 
-        let comparison = try renderPrompt(name: "compare_pads", arguments: ["pad_ids": "abc123, def456"])
+        let comparison = try renderPrompt(
+            name: "compare_pads",
+            arguments: ["pad_ids": "abc123, def456", "account": "acme-id"],
+        )
         guard case let .text(text) = try #require(comparison.messages.first).content else {
             Issue.record("expected text content")
             return
         }
 
-        #expect(text.contains("pad argument"))
+        #expect(text.contains("account: \"acme-id\""))
+        #expect(interviewPrompts.first { $0.name == "review_pad_code" }?
+            .arguments?.contains { $0.name == "account" } == true)
+    }
+
+    @Test
+    func `pad prompts reject unsafe account selectors`() {
+        #expect(throws: PromptError.invalidArgument(
+            name: "account",
+            reason: "must be a safe account id or unique display name",
+        )) {
+            try renderPrompt(
+                name: "review_pad_code",
+                arguments: ["pad_id": "abc123", "account": "bad\"quote"],
+            )
+        }
     }
 
     @Test
@@ -250,8 +267,9 @@ struct ResourcesTests {
     }
 
     @Test
-    func `multi-account static resources are account-qualified`() throws {
-        let uris = try staticResources(for: accountSet()).map(\.uri)
+    func `multi-account static resources are account-qualified by stable id`() throws {
+        let set = try accountSet()
+        let uris = staticResources(for: set).map(\.uri)
         #expect(uris.contains("coderpad://account/Acme%20EU/quota"))
         #expect(uris.contains("coderpad://account/Beta/organization"))
         #expect(!uris.contains("coderpad://quota"))
@@ -268,7 +286,7 @@ struct ResourcesTests {
     @Test
     func `single-account catalog advertises only canonical unqualified templates`() throws {
         let account = try #require(accountSet().accounts.first)
-        let single = MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: false)
+        let single = try MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: false)
         let patterns = resourceTemplates(for: single).map(\.uriTemplate)
 
         #expect(patterns == resourceTemplates.map(\.uriTemplate))
@@ -423,6 +441,18 @@ struct ResourcesTests {
         }
         #expect(parseResourceURI("coderpad://question/1") == .question(1))
         #expect(parseResourceURI("coderpad://question/\(Int.max)") == .question(Int.max))
+    }
+
+    @Test
+    func `pad resource ids reject zero and negative numeric spellings`() {
+        for id in ["0", "-1", "-8", "+0"] {
+            #expect(parseResourceURI("coderpad://pad/\(id)") == nil)
+            #expect(parseResourceURI("coderpad://pad/\(id)/code") == nil)
+            #expect(parseResourceURI("coderpad://account/Acme/pad/\(id)") == nil)
+            #expect(parseResourceURI("coderpad://account/Acme/pad/\(id)/code") == nil)
+        }
+        #expect(parseResourceURI("coderpad://pad/1") == .pad("1"))
+        #expect(parseResourceURI("coderpad://pad/1/code") == .padCode("1"))
     }
 
     @Test

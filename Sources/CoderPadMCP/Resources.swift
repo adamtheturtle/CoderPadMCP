@@ -8,6 +8,7 @@
 //  the client fills in. The URI parsing is pure, so it is unit-tested without a server.
 //
 
+import CoderPadToolCore
 import Foundation
 import MCP
 
@@ -32,21 +33,25 @@ public let staticResources: [Resource] = [
 ]
 
 public func staticResources(for accountSet: MCPAccountSet) -> [Resource] {
+    // An empty set must not advertise unqualified resources that always fail (#150).
+    guard !accountSet.accounts.isEmpty else { return [] }
     guard accountSet.accounts.count > 1 else { return staticResources }
 
+    // Stable ids disambiguate duplicate display names and round-trip through the
+    // URI parser even when a name would be a reserved path segment (#135, #136).
     return accountSet.accounts.flatMap { account in
-        let encodedName = resourcePathComponent(account.name)
+        let encodedID = resourcePathComponent(account.id)
         return [
             Resource(
                 name: "\(account.name) pad quota",
-                uri: "coderpad://account/\(encodedName)/quota",
-                description: "The pad quota usage for \(account.name).",
+                uri: "coderpad://account/\(encodedID)/quota",
+                description: "The pad quota usage for \(account.name) (id \(account.id)).",
                 mimeType: "application/json",
             ),
             Resource(
                 name: "\(account.name) organization directory",
-                uri: "coderpad://account/\(encodedName)/organization",
-                description: "The organization teams and members for \(account.name).",
+                uri: "coderpad://account/\(encodedID)/organization",
+                description: "The organization teams and members for \(account.name) (id \(account.id)).",
                 mimeType: "application/json",
             ),
         ]
@@ -80,24 +85,25 @@ public let accountResourceTemplates: [Resource.Template] = [
     Resource.Template(
         uriTemplate: "coderpad://account/{account}/pad/{id}",
         name: "Account pad",
-        description: "A single pad's full detail as JSON for the selected account.",
+        description: "A single pad's full detail as JSON for the selected account. {account} is the stable account id.",
         mimeType: "application/json",
     ),
     Resource.Template(
         uriTemplate: "coderpad://account/{account}/pad/{id}/code",
         name: "Account pad code",
-        description: "Just the code in a pad for the selected account.",
+        description: "Just the code in a pad for the selected account. {account} is the stable account id.",
         mimeType: "application/json",
     ),
     Resource.Template(
         uriTemplate: "coderpad://account/{account}/question/{id}",
         name: "Account question",
-        description: "A single question's full detail as JSON for the selected account.",
+        description: "A single question's full detail as JSON for the selected account. {account} is the stable account id.",
         mimeType: "application/json",
     ),
 ]
 
 public func resourceTemplates(for accountSet: MCPAccountSet) -> [Resource.Template] {
+    guard !accountSet.accounts.isEmpty else { return [] }
     guard accountSet.accounts.count > 1 else { return resourceTemplates }
 
     return accountResourceTemplates
@@ -252,9 +258,9 @@ private func parseAccountResource(_ decoded: [String]) -> ResourceRequest? {
 
 private func parsePadResource(_ tail: [String]) -> ResourceRequest? {
     switch tail.count {
-    case 1 where isSafePadID(tail[0]):
+    case 1 where validatedPadID(tail[0]) != nil:
         .pad(tail[0])
-    case 2 where isSafePadID(tail[0]) && isRoute(tail[1], "code"):
+    case 2 where validatedPadID(tail[0]) != nil && isRoute(tail[1], "code"):
         .padCode(tail[0])
     default:
         nil
@@ -269,9 +275,9 @@ private func parseQuestionResource(_ tail: [String]) -> ResourceRequest? {
 
 private func parseAccountPadResource(account: String, tail: [String]) -> ResourceRequest? {
     switch tail.count {
-    case 1 where isSafePadID(tail[0]):
+    case 1 where validatedPadID(tail[0]) != nil:
         .accountPad(account: account, id: tail[0])
-    case 2 where isSafePadID(tail[0]) && isRoute(tail[1], "code"):
+    case 2 where validatedPadID(tail[0]) != nil && isRoute(tail[1], "code"):
         .accountPadCode(account: account, id: tail[0])
     default:
         nil

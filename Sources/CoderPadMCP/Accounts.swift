@@ -11,6 +11,7 @@
 //  it's unit-tested without touching the filesystem.
 //
 
+import CoderPadToolCore
 import Foundation
 
 /// Operational ceiling for one server process. Account/resource directory responses
@@ -92,36 +93,44 @@ public struct MCPAccount: Equatable, Sendable {
 /// write opt-in.
 public struct MCPAccountSet: Equatable, Sendable {
     public let accounts: [MCPAccount]
-    /// The name of the account used when a tool call omits `account`.
+    /// Stable id or unique display name of the account used when a tool call omits
+    /// `account`. Prefer the stable id; cross-account id/name collisions are rejected
+    /// at construction so id-first resolution cannot hijack another account (#138, #195).
     public let defaultName: String
     public let allowWrites: Bool
 
-    public init(accounts: [MCPAccount], defaultName: String, allowWrites: Bool) {
+    public init(accounts: [MCPAccount], defaultName: String, allowWrites: Bool) throws {
+        try Self.validate(accounts)
         self.accounts = accounts
         self.defaultName = defaultName
         self.allowWrites = allowWrites
     }
 
-    /// The default account (the one named `defaultName`, else the first), or nil
+    /// The default account (the one identified by `defaultName`, else the first), or nil
     /// for a directly constructed empty set (#1563).
     public var defaultAccount: MCPAccount? {
         accounts.first { $0.id == defaultName }
-            ?? accounts.first { $0.name == defaultName }
+            ?? accounts.first { accountNamesEqual($0.name, defaultName) }
             ?? accounts.first
     }
 
-    /// Resolves a tool call's `account` argument to a configured account by name
-    /// (case-insensitive). A nil/empty name resolves to the default; a non-empty name
-    /// that matches nothing returns nil so the caller can report the available accounts.
-    /// A name matching more than one account (a normalization variant the config
-    /// duplicate check didn't fold) is ambiguous and also returns nil rather than
-    /// silently targeting whichever was listed first (#1582).
+    /// Resolves a tool call's `account` argument to a configured account by stable id
+    /// (exact) or unique display name (case-insensitive). A nil/empty selector resolves
+    /// to the default; a non-empty selector that matches nothing returns nil so the
+    /// caller can report the available accounts. A name matching more than one account
+    /// is ambiguous and also returns nil rather than silently targeting whichever was
+    /// listed first (#1582). Prefer stable ids when names may collide.
     public func resolve(_ name: String?) -> MCPAccount? {
         guard let name, !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return defaultAccount
         }
 
         let wanted = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard wanted.count <= maxAccountSelectorCharacters,
+              wanted.utf8.count <= maxAccountSelectorUTF8Bytes
+        else {
+            return nil
+        }
         if let identified = accounts.first(where: { $0.id == wanted }) {
             return identified
         }
@@ -137,14 +146,47 @@ public struct MCPAccountSet: Equatable, Sendable {
         accounts.contains(where: \.screenEnabled)
     }
 
+    /// Whether omitted-account Screen calls would hit a configured default. When Screen
+    /// is available only on a non-default account, clients must pass `account` (#198).
+    public var defaultScreenEnabled: Bool {
+        defaultAccount?.screenEnabled == true
+    }
+
     /// Whether at least one account can advertise write tools.
     public var anyWritesEnabled: Bool {
         allowWrites && accounts.contains(where: \.allowWrites)
     }
 
+    /// Whether omitted-account write calls would be authorized on the default (#199).
+    public var defaultWritesEnabled: Bool {
+        guard let defaultAccount else { return false }
+
+        return allowsWrites(to: defaultAccount)
+    }
+
     /// Whether a specific account may execute write tools.
     public func allowsWrites(to account: MCPAccount) -> Bool {
         allowWrites && account.allowWrites
+    }
+
+    private static func validate(_ accounts: [MCPAccount]) throws {
+        var seenIDs: [String] = []
+        for account in accounts {
+            guard !seenIDs.contains(account.id) else {
+                throw MCPConfigError.duplicateID(account.id)
+            }
+            seenIDs.append(account.id)
+        }
+
+        // An id that equals another account's display name would make name selection
+        // route to the wrong organization under id-first resolve (#195).
+        for account in accounts {
+            for other in accounts where other.id != account.id {
+                if accountNamesEqual(account.id, other.name) {
+                    throw MCPConfigError.selectorCollision(id: account.id, name: other.name)
+                }
+            }
+        }
     }
 
     /// The directory returned by `list_accounts`: names, base URLs, and flags, never the
@@ -175,14 +217,16 @@ private func accountNamesEqual(_ lhs: String, _ rhs: String) -> Bool {
     lhs.caseInsensitiveCompare(rhs) == .orderedSame
 }
 
-private let maximumAccountNameUTF8Bytes = 256
-
 /// Why a configuration couldn't be turned into a usable account set.
 public enum MCPConfigError: Error, Equatable, LocalizedError {
     case noAccounts
     case tooManyAccounts(limit: Int)
     case missingAPIKey(account: String)
     case duplicateName(String)
+    case duplicateID(String)
+    /// An account's stable id matches another account's display name, so id-first
+    /// selection would silently hijack name selectors (#195).
+    case selectorCollision(id: String, name: String)
     case multipleDefaultAccounts([String])
     /// A multi-account config must declare its default explicitly: falling back
     /// to whichever account the JSON array happens to list first would let a
@@ -206,6 +250,11 @@ public enum MCPConfigError: Error, Equatable, LocalizedError {
             "account \"\(account)\" is missing its \"api_key\"."
         case let .duplicateName(name):
             "two accounts share the name \"\(name)\"; names must be unique."
+        case let .duplicateID(id):
+            "two accounts share the stable id \"\(id)\"; ids must be unique."
+        case let .selectorCollision(id, name):
+            "account id \"\(id)\" collides with another account's name \"\(name)\"; "
+                + "ids and names must not overlap across accounts."
         case let .multipleDefaultAccounts(names):
             "multiple accounts are marked as default ("
                 + names.joined(separator: ", ") + "); mark only one as the default."
@@ -314,24 +363,28 @@ private func trimmedNonEmpty(_ raw: String?) -> String? {
 /// An account name suitable for tool arguments and resource URIs (#1583): control
 /// and Unicode format characters are stripped and both display characters and UTF-8
 /// bytes are capped, so a malformed config value can't produce an unusable, oversized,
-/// or visually deceptive resource catalog. Nil when nothing usable remains.
+/// or visually deceptive resource catalog. Dot-segment names are rejected because
+/// resource URI parsing refuses them (#136). Nil when nothing usable remains.
 private func sanitizedAccountName(_ raw: String?) -> String? {
     guard var value = trimmedNonEmpty(raw) else { return nil }
 
     value = String(value.unicodeScalars.filter {
         !CharacterSet.controlCharacters.contains($0) && $0.properties.generalCategory != .format
     })
-    value = String(value.prefix(100))
+    value = String(value.prefix(maxAccountSelectorCharacters))
     var byteBounded = ""
     var byteCount = 0
     for scalar in value.unicodeScalars {
         let scalarBytes = scalar.utf8.count
-        guard byteCount + scalarBytes <= maximumAccountNameUTF8Bytes else { break }
+        guard byteCount + scalarBytes <= maxAccountSelectorUTF8Bytes else { break }
         byteBounded.unicodeScalars.append(scalar)
         byteCount += scalarBytes
     }
     value = byteBounded.trimmingCharacters(in: .whitespacesAndNewlines)
-    return value.isEmpty ? nil : value
+    // Resource path segments reject "." / ".." (#136); never advertise those selectors.
+    guard !value.isEmpty, value != ".", value != ".." else { return nil }
+
+    return value
 }
 
 private func validatedCredential(_ raw: String?, account: String, field: String) throws -> String? {
@@ -547,14 +600,27 @@ public func makeAccountSet(config: [String: Any]?, environment: [String: String]
             throw MCPConfigError.noDefaultAccount
         }
 
-        return MCPAccountSet(accounts: accounts, defaultName: defaultName, allowWrites: configWrites)
+        return try MCPAccountSet(accounts: accounts, defaultName: defaultName, allowWrites: configWrites)
     }
 
     return try environmentAccountSet(environment, allowWrites: envWrites)
 }
 
 private func environmentAccountSet(_ environment: [String: String], allowWrites: Bool) throws -> MCPAccountSet {
-    let accountName = sanitizedAccountName(environment["CODERPAD_ACCOUNT_NAME"]) ?? "default"
+    // Absent or blank CODERPAD_ACCOUNT_NAME becomes "default". A present value that
+    // sanitizes to nothing (controls-only, ".", "..", etc.) is a configuration error
+    // rather than a silent rename (#139).
+    let accountName: String
+    if let rawName = environment["CODERPAD_ACCOUNT_NAME"],
+       !rawName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    {
+        guard let sanitized = sanitizedAccountName(rawName) else {
+            throw MCPConfigError.invalidCredential(account: "environment", field: "CODERPAD_ACCOUNT_NAME")
+        }
+        accountName = sanitized
+    } else {
+        accountName = "default"
+    }
     guard let key = try validatedCredential(environment["CODERPAD_API_KEY"],
                                             account: accountName, field: "CODERPAD_API_KEY")
     else {
@@ -575,7 +641,7 @@ private func environmentAccountSet(_ environment: [String: String], allowWrites:
             account: accountName,
         ),
     )
-    return MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: allowWrites)
+    return try MCPAccountSet(accounts: [account], defaultName: account.id, allowWrites: allowWrites)
 }
 
 private func configuredAllowWrites(_ config: [String: Any]?) throws -> Bool {
