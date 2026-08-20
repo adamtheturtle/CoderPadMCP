@@ -195,7 +195,8 @@ public nonisolated(unsafe) let coderPadReadToolDescriptors: [[String: Any]] =
             properties: withAccount([
                 "pad": mcpStringSchema("The pad's slug or id."),
                 "max_file_chars": mcpIntSchema(
-                    "Optional. Truncate each file to this many characters.",
+                    "Optional. Truncate each file to this many UTF-8 bytes (default \(defaultMaxFileChars) "
+                        + "when omitted). The truncation marker counts toward the budget.",
                     minimum: 1,
                 ),
             ]),
