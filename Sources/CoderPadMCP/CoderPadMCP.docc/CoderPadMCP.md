@@ -43,8 +43,9 @@ let provider = CoderPadProvider(accountSet: accounts)
 - ``MCPAccountSet``
 - ``MCPConfigError``
 - ``MCPConfigLoadError``
+- ``configurationFailureMessage(_:)``
 - ``makeAccountSet(config:environment:)``
-- ``loadConfigObject(environment:fileManager:homeDirectory:)``
+- ``loadConfigObject(environment:homeDirectory:)``
 
 ### Prompts and resources
 

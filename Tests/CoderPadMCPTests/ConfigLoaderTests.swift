@@ -34,6 +34,28 @@ struct ConfigLoaderTests {
         #expect(try loadConfigObject(environment: [:], homeDirectory: home) == nil)
     }
 
+    @Test(arguments: ["", "   ", "\t\n"])
+    func `whitespace CODERPAD_MCP_CONFIG is an explicit configuration error`(_ value: String) throws {
+        let home = try temporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: home) }
+        let defaultConfig = home.appending(path: ".config/coderpad-mcp/config.json")
+        try FileManager.default.createDirectory(
+            at: defaultConfig.deletingLastPathComponent(),
+            withIntermediateDirectories: true,
+        )
+        try writeConfig(
+            Data(#"{"accounts":[{"name":"Default","api_key":"key"}]}"#.utf8),
+            to: defaultConfig,
+        )
+
+        #expect(throws: MCPConfigLoadError.emptyConfigPath) {
+            _ = try loadConfigObject(
+                environment: ["CODERPAD_MCP_CONFIG": value, "CODERPAD_API_KEY": "legacy"],
+                homeDirectory: home,
+            )
+        }
+    }
+
     @Test
     func `missing explicit config does not fall back to environment`() throws {
         let directory = try temporaryDirectory()
@@ -200,6 +222,32 @@ struct ConfigLoaderTests {
             try chmod.run()
             chmod.waitUntilExit()
             try #require(chmod.terminationStatus == 0)
+
+            #expect(throws: MCPConfigLoadError.insecurePermissions(path: url.path)) {
+                _ = try loadConfigObject(environment: ["CODERPAD_MCP_CONFIG": url.path])
+            }
+        }
+    #endif
+
+    #if os(Linux)
+        @Test
+        func `a config with a POSIX ACL grant is rejected`() throws {
+            let directory = try temporaryDirectory()
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let url = directory.appending(path: "config.json")
+            try writeConfig(Data(#"{"accounts":[]}"#.utf8), to: url)
+
+            let setfacl = Process()
+            setfacl.executableURL = URL(fileURLWithPath: "/usr/bin/setfacl")
+            setfacl.arguments = ["-m", "u:nobody:r", url.path]
+            do {
+                try setfacl.run()
+            } catch {
+                // ACL utilities are optional on minimal images; skip rather than fail CI.
+                return
+            }
+            setfacl.waitUntilExit()
+            guard setfacl.terminationStatus == 0 else { return }
 
             #expect(throws: MCPConfigLoadError.insecurePermissions(path: url.path)) {
                 _ = try loadConfigObject(environment: ["CODERPAD_MCP_CONFIG": url.path])

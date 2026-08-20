@@ -11,6 +11,17 @@ import Foundation
     import Glibc
 #endif
 
+#if os(Linux)
+    /// Glibc's module map does not always surface xattr helpers; bind the libc symbol directly.
+    @_silgen_name("fgetxattr")
+    private func coderpad_fgetxattr(
+        _ fd: Int32,
+        _ name: UnsafePointer<CChar>?,
+        _ value: UnsafeMutableRawPointer?,
+        _ size: Int,
+    ) -> Int
+#endif
+
 func securelyReadConfig(
     path: String,
     explicit: Bool,
@@ -98,13 +109,28 @@ private func hasExtendedACL(descriptor: Int32, path: String) throws -> Bool {
 
         acl_free(UnsafeMutableRawPointer(acl))
         return true
+    #elseif os(Linux)
+        // POSIX ACLs are stored in `system.posix_acl_access`. Probe the already-open
+        // descriptor so a path swap cannot hide a grant. Filesystems that cannot
+        // report xattrs fail closed: we cannot promise the file is private.
+        errno = 0
+        let size = coderpad_fgetxattr(descriptor, "system.posix_acl_access", nil, 0)
+        if size >= 0 {
+            return true
+        }
+        switch errno {
+        case ENODATA:
+            return false
+        case ENOTSUP, EOPNOTSUPP:
+            return true
+        default:
+            throw MCPConfigLoadError.readFailed(path: path)
+        }
     #else
-        // Linux's POSIX ACL API is supplied by libacl rather than the C runtime.
-        // Unix permission bits are still validated above; avoid adding a system
-        // library dependency solely for this optional hardening check.
+        // No ACL inspection API is available; reject rather than silently skip the check.
         _ = descriptor
         _ = path
-        return false
+        return true
     #endif
 }
 

@@ -86,7 +86,9 @@ Configure an MCP client with the built executable:
 ```
 
 For multiple accounts, set `CODERPAD_MCP_CONFIG` to a user-owned JSON file readable
-only by that user:
+only by that user (mode `0600`, no group/other bits, and no ACL grants to other
+users). A blank or whitespace-only `CODERPAD_MCP_CONFIG` is an error; it does not
+fall back to the default path or environment credentials.
 
 ```json
 {
