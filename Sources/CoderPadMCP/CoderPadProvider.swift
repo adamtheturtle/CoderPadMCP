@@ -424,12 +424,38 @@ private func dispatchScreenOrWrite(
     account: MCPAccount,
     cache: CoderPadMCPCache?,
 ) async throws -> CallTool.Result {
+    let writeArgumentAllowlists: [String: Set<String>] = [
+        "create_pad": [
+            mcpAccountArgument, "title", "language", "question_id", "contents", "owner_email",
+            "notes", "team_id", "dry_run",
+        ],
+        "update_pad": [
+            mcpAccountArgument, "pad", "title", "notes", "owner_email", "language", "dry_run",
+        ],
+        "create_question": [
+            mcpAccountArgument, "title", "language", "description", "solution", "contents", "dry_run",
+        ],
+        "update_question": [
+            mcpAccountArgument, "question", "title", "language", "description", "solution",
+            "contents", "dry_run",
+        ],
+    ]
     let budgetedWriteFields = [
         "create_pad": ["title", "language", "contents", "owner_email", "notes", "team_id"],
         "update_pad": ["title", "notes", "owner_email", "language"],
         "create_question": ["title", "language", "description", "solution", "contents"],
         "update_question": ["title", "language", "description", "solution", "contents"],
     ]
+    if let allowed = writeArgumentAllowlists[name],
+       let error = unknownWriteArgumentError(arguments, allowed: allowed)
+    {
+        return errorResult(error)
+    }
+    if let fields = budgetedWriteFields[name],
+       let invalid = invalidWriteStringArgument(arguments, names: fields)
+    {
+        return errorResult("\(invalid) must be a string.")
+    }
     if let fields = budgetedWriteFields[name],
        let error = writeStringBudgetValidationError(arguments, fields: fields)
     {
@@ -481,7 +507,14 @@ private func dispatchScreenOrWrite(
         return await invalidating(result, kind: .pads, account: account, cache: cache)
 
     case "create_question":
-        guard let title = optionalString(arguments, "title") else { return missingArgument("title") }
+        guard arguments?["title"] != nil else { return missingArgument("title") }
+        let rawTitle = presentWriteString(arguments, "title")
+        if let error = questionTitleValidationError(rawTitle) {
+            return errorResult(error)
+        }
+        guard let title = rawTitle?.trimmingCharacters(in: .whitespacesAndNewlines) else {
+            return missingArgument("title")
+        }
 
         let result = try await createQuestion(title: title, arguments: arguments, account: account)
         return await invalidating(result, kind: .questions, account: account, cache: cache)
@@ -1221,6 +1254,10 @@ private func createPad(arguments: [String: Value]?, account: MCPAccount) async t
     ) {
         return errorResult(error)
     }
+    let teamID = optionalString(arguments, "team_id")
+    if let error = teamIDValidationError(teamID) {
+        return errorResult(error)
+    }
 
     var body: [String: Any] = [:]
     if let title {
@@ -1230,7 +1267,8 @@ private func createPad(arguments: [String: Value]?, account: MCPAccount) async t
         body["language"] = language
     }
     if let owner = ownerEmail {
-        body["owner_email"] = owner
+        // Interview create/modify pad ownership uses `user_email`, not response `owner_email`.
+        body["user_email"] = owner
     }
     if let contents = presentWriteString(arguments, "contents") {
         body["contents"] = contents
@@ -1241,7 +1279,7 @@ private func createPad(arguments: [String: Value]?, account: MCPAccount) async t
     if let questionID = strictIntArgument(arguments, "question_id") {
         body["question_id"] = questionID
     }
-    if let teamID = optionalString(arguments, "team_id") {
+    if let teamID {
         body["team_id"] = teamID
     }
 
@@ -1256,6 +1294,15 @@ private func updatePad(id: String, arguments: [String: Value]?, account: MCPAcco
     if let error = padUpdateTitleValidationError(title) {
         return errorResult(error)
     }
+    let owner = presentWriteString(arguments, "owner_email")
+    if let error = padUpdateOwnerEmailValidationError(owner) {
+        return errorResult(error)
+    }
+    let rawLanguage = presentWriteString(arguments, "language")
+    if let error = createPadLanguageValidationError(rawLanguage) {
+        return errorResult(error)
+    }
+    let language = validatedCreatePadLanguage(rawLanguage)
     var body: [String: Any] = [:]
     if let title {
         body["title"] = title
@@ -1263,10 +1310,10 @@ private func updatePad(id: String, arguments: [String: Value]?, account: MCPAcco
     if let notes = presentWriteString(arguments, "notes") {
         body["notes"] = notes
     }
-    if let owner = presentWriteString(arguments, "owner_email") {
-        body["owner_email"] = owner
+    if let owner {
+        body["user_email"] = owner
     }
-    if let language = presentWriteString(arguments, "language") {
+    if let language {
         body["language"] = language
     }
     guard !body.isEmpty else {
@@ -1284,8 +1331,12 @@ private func createQuestion(
     arguments: [String: Value]?,
     account: MCPAccount,
 ) async throws -> CallTool.Result {
+    let rawLanguage = optionalString(arguments, "language")
+    if let error = createPadLanguageValidationError(rawLanguage) {
+        return errorResult(error)
+    }
     var question: [String: Any] = ["title": title]
-    if let language = optionalString(arguments, "language") {
+    if let language = validatedCreatePadLanguage(rawLanguage) {
         question["language"] = language
     }
     var body: [String: Any] = ["question": question]
@@ -1310,11 +1361,19 @@ private func updateQuestion(
     arguments: [String: Value]?,
     account: MCPAccount,
 ) async throws -> CallTool.Result {
+    let title = presentWriteString(arguments, "title")
+    if let error = questionTitleValidationError(title) {
+        return errorResult(error)
+    }
+    let rawLanguage = presentWriteString(arguments, "language")
+    if let error = createPadLanguageValidationError(rawLanguage) {
+        return errorResult(error)
+    }
     var question: [String: Any] = [:]
-    if let title = presentWriteString(arguments, "title") {
+    if let title {
         question["title"] = title
     }
-    if let language = presentWriteString(arguments, "language") {
+    if let language = validatedCreatePadLanguage(rawLanguage) {
         question["language"] = language
     }
     var body: [String: Any] = [:]

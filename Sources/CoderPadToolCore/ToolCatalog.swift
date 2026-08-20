@@ -171,7 +171,10 @@ public nonisolated(unsafe) let coderPadReadToolDescriptors: [[String: Any]] =
                 + "code without the whole pad object.",
             properties: withAccount([
                 "pad": mcpStringSchema("The pad's slug or id."),
-                "max_file_chars": mcpIntSchema("Optional. Truncate each file to this many characters."),
+                "max_file_chars": mcpIntSchema(
+                    "Optional. Truncate each file to this many characters.",
+                    minimum: 1,
+                ),
             ]),
             required: ["pad"],
         ),
@@ -284,7 +287,7 @@ public nonisolated(unsafe) let coderPadWriteToolDescriptors: [[String: Any]] =
             properties: withAccount([
                 "title": mcpStringSchema("Optional pad title.", maxLength: maxPadTitleCharacters),
                 "language": mcpStringSchema(
-                    "Optional single-file language supported by the pad-creation API.",
+                    "Optional language or framework from the Interview API language list.",
                     allowedValues: creatablePadLanguages,
                 ),
                 "question_id": mcpIntSchema(
@@ -292,21 +295,27 @@ public nonisolated(unsafe) let coderPadWriteToolDescriptors: [[String: Any]] =
                     minimum: 1,
                 ),
                 "contents": mcpStringSchema(
-                    "Optional starting code. Mutually exclusive with question_id.",
-                    maxLength: maxMCPWriteFieldBytes,
+                    "Optional starting code. Mutually exclusive with question_id. "
+                        + "At most \(maxMCPWriteFieldBytes) UTF-8 bytes.",
                 ),
                 "owner_email": mcpStringSchema(
-                    "Optional owner email; defaults to the account's user.",
+                    "Optional owner email; defaults to the account's user. Mapped to the API's user_email.",
                     maxLength: maxOwnerEmailBytes,
                 ),
-                "notes": mcpStringSchema("Optional private interviewer notes.", maxLength: maxMCPWriteFieldBytes),
+                "notes": mcpStringSchema(
+                    "Optional private interviewer notes. At most \(maxMCPWriteFieldBytes) UTF-8 bytes.",
+                ),
                 "team_id": mcpStringSchema(
-                    "Optional team id to link the pad to (org owners only).",
-                    maxLength: maxMCPWriteFieldBytes,
+                    "Optional team UUID to link the pad to (org owners only).",
+                    minLength: 36,
+                    maxLength: 36,
                 ),
                 "dry_run": mcpBoolSchema("Validate and preview the request without creating anything."),
             ]),
-            schemaExtras: ["not": ["required": ["question_id", "contents"]]],
+            schemaExtras: [
+                "additionalProperties": false,
+                "not": ["required": ["question_id", "contents"]],
+            ],
             annotations: writeAnnotations(title: "Create pad", destructive: false),
         ),
         mcpToolDescriptor(
@@ -316,32 +325,50 @@ public nonisolated(unsafe) let coderPadWriteToolDescriptors: [[String: Any]] =
             properties: withAccount([
                 "pad": mcpStringSchema("The pad's slug or id."),
                 "title": mcpStringSchema("New title.", minLength: 1, maxLength: maxPadTitleCharacters),
-                "notes": mcpStringSchema("New private interviewer notes.", maxLength: maxMCPWriteFieldBytes),
-                "owner_email": mcpStringSchema("New owner email.", maxLength: maxOwnerEmailBytes),
-                "language": mcpStringSchema("New language, e.g. \"python3\".", maxLength: maxMCPWriteFieldBytes),
+                "notes": mcpStringSchema(
+                    "New private interviewer notes. At most \(maxMCPWriteFieldBytes) UTF-8 bytes.",
+                ),
+                "owner_email": mcpStringSchema(
+                    "New owner email. Mapped to the API's user_email.",
+                    maxLength: maxOwnerEmailBytes,
+                ),
+                "language": mcpStringSchema(
+                    "New language or framework from the Interview API language list.",
+                    allowedValues: creatablePadLanguages,
+                ),
                 "dry_run": mcpBoolSchema("Validate and preview the request without changing the pad."),
             ]),
             required: ["pad"],
+            schemaExtras: ["additionalProperties": false],
             annotations: writeAnnotations(title: "Update pad", destructive: true),
         ),
         mcpToolDescriptor(
             "create_question",
             "Create a question in the account's question bank. Returns the new question.",
             properties: withAccount([
-                "title": mcpStringSchema("The question title (required).", maxLength: maxMCPWriteFieldBytes),
+                "title": mcpStringSchema(
+                    "The question title (required).",
+                    minLength: 1,
+                ),
                 "language": mcpStringSchema(
-                    "Optional language, e.g. \"python3\".", maxLength: maxMCPWriteFieldBytes,
+                    "Optional language or framework from the Interview API language list.",
+                    allowedValues: creatablePadLanguages,
                 ),
                 "description": mcpStringSchema(
-                    "Optional Markdown prompt shown to the interviewer.", maxLength: maxMCPWriteFieldBytes,
+                    "Optional Markdown prompt shown to the interviewer. "
+                        + "At most \(maxMCPWriteFieldBytes) UTF-8 bytes.",
                 ),
-                "solution": mcpStringSchema("Optional reference solution.", maxLength: maxMCPWriteFieldBytes),
+                "solution": mcpStringSchema(
+                    "Optional reference solution. At most \(maxMCPWriteFieldBytes) UTF-8 bytes.",
+                ),
                 "contents": mcpStringSchema(
-                    "Optional starter code inserted into the session.", maxLength: maxMCPWriteFieldBytes,
+                    "Optional starter code inserted into the session. "
+                        + "At most \(maxMCPWriteFieldBytes) UTF-8 bytes.",
                 ),
                 "dry_run": mcpBoolSchema("Validate and preview the request without creating anything."),
             ]),
             required: ["title"],
+            schemaExtras: ["additionalProperties": false],
             annotations: writeAnnotations(title: "Create question", destructive: false),
         ),
         mcpToolDescriptor(
@@ -350,14 +377,24 @@ public nonisolated(unsafe) let coderPadWriteToolDescriptors: [[String: Any]] =
                 + "delete the question.",
             properties: withAccount([
                 "question": mcpIntSchema("The question's numeric id.", minimum: 1),
-                "title": mcpStringSchema("New title.", maxLength: maxMCPWriteFieldBytes),
-                "language": mcpStringSchema("New language, e.g. \"python3\".", maxLength: maxMCPWriteFieldBytes),
-                "description": mcpStringSchema("New Markdown prompt.", maxLength: maxMCPWriteFieldBytes),
-                "solution": mcpStringSchema("New reference solution.", maxLength: maxMCPWriteFieldBytes),
-                "contents": mcpStringSchema("New starter code.", maxLength: maxMCPWriteFieldBytes),
+                "title": mcpStringSchema("New title.", minLength: 1),
+                "language": mcpStringSchema(
+                    "New language or framework from the Interview API language list.",
+                    allowedValues: creatablePadLanguages,
+                ),
+                "description": mcpStringSchema(
+                    "New Markdown prompt. At most \(maxMCPWriteFieldBytes) UTF-8 bytes.",
+                ),
+                "solution": mcpStringSchema(
+                    "New reference solution. At most \(maxMCPWriteFieldBytes) UTF-8 bytes.",
+                ),
+                "contents": mcpStringSchema(
+                    "New starter code. At most \(maxMCPWriteFieldBytes) UTF-8 bytes.",
+                ),
                 "dry_run": mcpBoolSchema("Validate and preview the request without changing the question."),
             ]),
             required: ["question"],
+            schemaExtras: ["additionalProperties": false],
             annotations: writeAnnotations(title: "Update question", destructive: true),
         ),
     ]

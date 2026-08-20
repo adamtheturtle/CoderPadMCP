@@ -123,7 +123,7 @@ public func renderPrompt(name: String, arguments: [String: String]?) throws -> G
     case "draft_question":
         let topic = try requiredPromptArgument(arguments, "topic")
         let language = promptArgument(arguments, "language")
-        let difficulty = promptArgument(arguments, "difficulty")
+        let difficulty = try validatedDraftQuestionDifficulty(promptArgument(arguments, "difficulty"))
         var constraints = ""
         if let language {
             constraints += "\nTarget language: \(language)."
@@ -184,4 +184,18 @@ private func requiredPromptPadID(_ arguments: [String: String]?) throws -> Strin
         throw PromptError.invalidArgument(name: "pad_id", reason: "must be a positive id or safe slug")
     }
     return padID
+}
+
+private let draftQuestionDifficulties = ["easy", "medium", "hard"]
+
+private func validatedDraftQuestionDifficulty(_ raw: String?) throws -> String? {
+    guard let raw else { return nil }
+    let normalized = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    guard draftQuestionDifficulties.contains(normalized) else {
+        throw PromptError.invalidArgument(
+            name: "difficulty",
+            reason: "must be one of: \(draftQuestionDifficulties.joined(separator: ", "))",
+        )
+    }
+    return normalized
 }
