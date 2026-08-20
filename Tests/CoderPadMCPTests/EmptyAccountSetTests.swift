@@ -9,10 +9,9 @@ import Testing
 
 @Suite("Empty MCP account sets")
 struct EmptyAccountSetTests {
-    private let empty = try! MCPAccountSet(accounts: [], defaultName: "missing", allowWrites: false)
-
     @Test
-    func `default and unqualified resolution are safely unavailable`() {
+    func `default and unqualified resolution are safely unavailable`() throws {
+        let empty = try MCPAccountSet(accounts: [], defaultName: "missing", allowWrites: false)
         #expect(empty.defaultAccount == nil)
         #expect(empty.resolve(nil) == nil)
         #expect(empty.resolve("") == nil)
@@ -21,6 +20,7 @@ struct EmptyAccountSetTests {
 
     @Test
     func `empty sets advertise no account-scoped resources or templates`() async throws {
+        let empty = try MCPAccountSet(accounts: [], defaultName: "missing", allowWrites: false)
         #expect(staticResources(for: empty).isEmpty)
         #expect(resourceTemplates(for: empty).isEmpty)
 

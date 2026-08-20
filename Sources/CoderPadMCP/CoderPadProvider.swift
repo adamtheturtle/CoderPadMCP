@@ -212,7 +212,7 @@ public struct CoderPadProvider: MCPToolProvider {
         let accountRequiredForWrites = writeToolNames.contains(name)
             && accountSet.anyWritesEnabled
             && !accountSet.defaultWritesEnabled
-        if (accountRequiredForScreen || accountRequiredForWrites),
+        if accountRequiredForScreen || accountRequiredForWrites,
            requestedAccount?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false
         {
             let reason = accountRequiredForScreen
