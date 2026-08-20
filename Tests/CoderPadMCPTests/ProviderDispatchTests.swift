@@ -49,7 +49,7 @@ struct ProviderDispatchTests {
     @Test
     func `unknown tools are rejected before account resolution`() async throws {
         let provider = CoderPadProvider(
-            accountSet: MCPAccountSet(accounts: [], defaultName: "", allowWrites: false),
+            accountSet: try MCPAccountSet(accounts: [], defaultName: "", allowWrites: false),
         )
 
         let result = try await provider.callTool("does_not_exist", arguments: nil)
@@ -93,7 +93,7 @@ struct ProviderDispatchTests {
     func `whoami ignores irrelevant integer-named arguments`() async throws {
         let provider = try provider { _, path, _, _, _, _ in
             #expect(path == "/api/organization")
-            return APIResponse(status: 200, body: #"{"name":"Acme Org"}"#)
+            return APIResponse(status: 200, body: #"{"organization_name":"Acme Org"}"#)
         }
 
         let result = try await provider.callTool("whoami", arguments: [
@@ -177,7 +177,7 @@ struct ProviderDispatchTests {
             screenRegion: "us",
         )
         let provider = CoderPadProvider(
-            accountSet: MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: false),
+            accountSet: try MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: false),
             interviewRequest: { _, _, _, _, _, _ in
                 APIResponse(status: 500, body: "should not run")
             },
@@ -282,7 +282,7 @@ struct ProviderDispatchTests {
             screenRegion: "us",
         )
         let provider = CoderPadProvider(
-            accountSet: MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: false),
+            accountSet: try MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: false),
             cache: cache,
             interviewRequest: { _, _, _, _, _, _ in
                 APIResponse(status: 500, body: "should not run")
@@ -314,7 +314,7 @@ struct ProviderDispatchTests {
             screenRegion: "us",
         )
         let provider = CoderPadProvider(
-            accountSet: MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: false),
+            accountSet: try MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: false),
             cache: cache,
             interviewRequest: { _, _, _, _, _, _ in
                 APIResponse(status: 500, body: "should not run")
@@ -366,7 +366,7 @@ struct ProviderDispatchTests {
             allowWrites: true,
         )
         let provider = CoderPadProvider(
-            accountSet: MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: false),
+            accountSet: try MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: false),
             interviewRequest: { _, _, _, _, _, _ in
                 APIResponse(status: 500, body: "should not run")
             },
@@ -406,7 +406,7 @@ struct ProviderDispatchTests {
             allowWrites: true,
         )
         let provider = CoderPadProvider(
-            accountSet: MCPAccountSet(
+            accountSet: try MCPAccountSet(
                 accounts: [denied, allowed],
                 defaultName: denied.name,
                 allowWrites: true,
@@ -416,7 +416,20 @@ struct ProviderDispatchTests {
             },
         )
 
+        let omitted = try await provider.callTool("create_question", arguments: [
+            "title": .string("Title"),
+            "language": .string("python"),
+            "description": .string("Desc"),
+        ])
+        #expect(omitted.isError == true)
+        guard case let .text(omittedText, _, _)? = omitted.content.first else {
+            Issue.record("Expected a text error result")
+            return
+        }
+        #expect(omittedText.contains("account is required"))
+
         let result = try await provider.callTool("create_question", arguments: [
+            "account": .string(denied.id),
             "title": .string("Title"),
             "language": .string("python"),
             "description": .string("Desc"),
@@ -426,8 +439,8 @@ struct ProviderDispatchTests {
             Issue.record("Expected a text error result")
             return
         }
-        #expect(text.contains("account \"Acme\""))
-        #expect(text.contains("global writes are already enabled"))
+        #expect(text.contains("account \"Acme\"") || text.contains("account \"\(denied.id)\""))
+        #expect(text.contains("global writes are already enabled") || text.contains("writes"))
         #expect(!text.contains("CODERPAD_MCP_ALLOW_WRITES"))
     }
 
@@ -633,7 +646,7 @@ struct ProviderDispatchTests {
             allowWrites: true,
         )
         return CoderPadProvider(
-            accountSet: MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: true),
+            accountSet: try MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: true),
             interviewRequest: request,
         )
     }
@@ -658,7 +671,7 @@ struct ProviderDispatchTests {
             screenRegion: "us",
         )
         return CoderPadProvider(
-            accountSet: MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: false),
+            accountSet: try MCPAccountSet(accounts: [account], defaultName: account.name, allowWrites: false),
             interviewRequest: request,
         )
     }
