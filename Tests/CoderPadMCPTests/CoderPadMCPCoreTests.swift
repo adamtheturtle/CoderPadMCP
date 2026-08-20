@@ -719,8 +719,12 @@ struct PadCodeTests {
         object: [String: Any],
     ) -> PadCodeEnvironment {
         var object = object
-        if object["id"] == nil { object["id"] = id }
-        if object["pad_id"] == nil { object["pad_id"] = padID }
+        if object["id"] == nil {
+            object["id"] = id
+        }
+        if object["pad_id"] == nil {
+            object["pad_id"] = padID
+        }
         return PadCodeEnvironment(id: id, object: object)
     }
 
