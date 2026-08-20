@@ -44,6 +44,20 @@ struct PromptsTests {
     }
 
     @Test
+    func `summarize_pad does not claim unavailable event history`() throws {
+        let result = try renderPrompt(name: "summarize_pad", arguments: ["pad_id": "abc123"])
+        guard case let .text(text) = try #require(result.messages.first).content else {
+            Issue.record("expected text content")
+            return
+        }
+
+        #expect(text.contains("get_pad"))
+        #expect(text.contains("get_pad_code"))
+        #expect(text.contains("There is no events tool"))
+        #expect(!text.contains("event history"))
+    }
+
+    @Test
     func `pad prompts name the pad tool argument`() throws {
         let promptArguments = ["pad_id": "abc123"]
         for name in ["review_pad_code", "summarize_pad"] {

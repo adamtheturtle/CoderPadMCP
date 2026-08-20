@@ -37,4 +37,5 @@ base64 -i DeveloperIDApplication.p12 | pbcopy
 3. Wait for the Release workflow to publish the GitHub Release.
 
 The workflow can be run manually with an existing tag to retry or backfill a
-release. Existing release assets are replaced, making retries safe.
+release. On retry, obsolete managed assets are deleted and the current dist
+files are uploaded, so the published asset set matches this build.

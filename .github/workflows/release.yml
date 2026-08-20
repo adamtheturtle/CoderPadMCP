@@ -39,9 +39,40 @@ jobs:
             echo "::error::Release tag must be a semantic version such as 1.2.3 or v1.2.3."
             exit 1
           fi
-          if ! grep -Fq "public let coderPadMCPVersion = \"$version\"" \
-            Sources/CoderPadMCP/ReleaseVersion.swift; then
-            echo "::error::coderPadMCPVersion does not match tag $RELEASE_TAG."
+          version_file=Sources/CoderPadMCP/ReleaseVersion.swift
+          # Ignore comments: only the live declaration may satisfy the tag check (#202).
+          declared="$(
+            grep -E '^[[:space:]]*public[[:space:]]+let[[:space:]]+coderPadMCPVersion[[:space:]]*=' \
+              "$version_file" \
+              | grep -Ev '^[[:space:]]*//' \
+              | sed -E 's/.*coderPadMCPVersion[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/' \
+              | head -n 1
+          )"
+          if [[ -z "$declared" ]]; then
+            echo "::error::Could not parse coderPadMCPVersion from $version_file."
+            exit 1
+          fi
+          if [[ "$declared" != "$version" ]]; then
+            echo "::error::coderPadMCPVersion ($declared) does not match tag $RELEASE_TAG."
+            exit 1
+          fi
+      - name: Reject version comments as validation matches
+        shell: bash
+        run: |
+          set -euo pipefail
+          fixture=Tests/Fixtures/ReleaseVersionCommentTrap.swift
+          # A comment-only match must not count; the live declaration is 0.0.0.
+          if grep -Fq 'public let coderPadMCPVersion = "9.9.9"' "$fixture"; then
+            :
+          else
+            echo "::error::Fixture no longer contains the misleading comment."
+            exit 1
+          fi
+          declared="$(
+            grep -E '^[[:space:]]*public[[:space:]]+let[[:space:]]+coderPadMCPVersion[[:space:]]*='               "$fixture"               | grep -Ev '^[[:space:]]*//'               | sed -E 's/.*coderPadMCPVersion[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/'               | head -n 1
+          )"
+          if [[ "$declared" != "0.0.0" ]]; then
+            echo "::error::Comment trap parser returned '$declared' instead of 0.0.0."
             exit 1
           fi
       - name: Test
@@ -246,6 +277,31 @@ jobs:
         run: |
           set -euo pipefail
           if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            # Drop managed assets that are no longer produced so retries replace the
+            # full set rather than leaving obsolete downloads attached (#203).
+            mapfile -t existing < <(
+              gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+                --json assets --jq '.assets[].name'
+            )
+            shopt -s nullglob
+            current=()
+            for path in dist/*; do
+              current+=("$(basename "$path")")
+            done
+            for name in "${existing[@]}"; do
+              keep=false
+              for current_name in "${current[@]}"; do
+                if [[ "$name" == "$current_name" ]]; then
+                  keep=true
+                  break
+                fi
+              done
+              if [[ "$keep" == false ]]; then
+                gh release delete-asset "$RELEASE_TAG" "$name" \
+                  --repo "$GITHUB_REPOSITORY" \
+                  --yes
+              fi
+            done
             gh release upload "$RELEASE_TAG" dist/* \
               --repo "$GITHUB_REPOSITORY" \
               --clobber

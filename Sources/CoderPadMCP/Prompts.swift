@@ -95,9 +95,11 @@ public func renderPrompt(name: String, arguments: [String: String]?) throws -> G
             messages: [userPromptMessage("""
             Summarize the CoderPad interview pad "\(padID)".
 
-            Call get_pad with pad: "\(padID)" (and get_pad_code with pad: "\(padID)" for the code) and then give a short \
-            summary: the problem posed, the candidate's approach and how far they got, notable \
-            strengths or struggles, and the apparent outcome. Keep it to a few tight paragraphs.
+            Call get_pad with pad: "\(padID)" for title, language, participants, and status, and \
+            get_pad_code with pad: "\(padID)" for the code. There is no events tool; do not claim \
+            a step-by-step timeline you cannot observe. Infer approach, progress, and outcome only \
+            from the pad metadata and code, and say when evidence is missing. Keep it to a few \
+            tight paragraphs.
             """)],
         )
 

@@ -42,13 +42,19 @@ private func missingArgument(_ name: String) -> CallTool.Result {
     )
 }
 
-private func writesDisabled() -> CallTool.Result {
-    CallTool.Result(
-        content: [.text(
-            text: "Writes are disabled. Enable them with \"allow_writes\": true in the config "
-                + "(or CODERPAD_MCP_ALLOW_WRITES=1) to use the create/edit tools.",
-            annotations: nil, _meta: nil,
-        )],
+private func writesDisabled(accountSet: MCPAccountSet, account: MCPAccount) -> CallTool.Result {
+    let text: String
+    if !accountSet.allowWrites {
+        text = "Writes are disabled globally. Enable them with \"allow_writes\": true in the "
+            + "config (or CODERPAD_MCP_ALLOW_WRITES=1) to use the create/edit tools."
+    } else if !account.allowWrites {
+        text = "Writes are disabled for account \"\(account.name)\". Set that account's "
+            + "\"allow_writes\": true in the config (global writes are already enabled)."
+    } else {
+        text = "Writes are disabled for this account."
+    }
+    return CallTool.Result(
+        content: [.text(text: text, annotations: nil, _meta: nil)],
         isError: true,
     )
 }
@@ -204,7 +210,7 @@ public struct CoderPadProvider: MCPToolProvider {
 
         // Write tools are gated on the opt-in, regardless of which account is targeted.
         if writeToolNames.contains(name), !accountSet.allowsWrites(to: account) {
-            let result = writesDisabled()
+            let result = writesDisabled(accountSet: accountSet, account: account)
             record(name: name, account: account, result: result)
             return result
         }
