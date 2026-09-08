@@ -1,13 +1,11 @@
 # CoderPadMCP
 
-An unofficial, embeddable Model Context Protocol provider and standalone server for
-the CoderPad REST APIs.
+An unofficial, embeddable Model Context Protocol provider and standalone server for the CoderPad REST APIs.
 
-[Documentation](https://swiftpackageindex.com/adamtheturtle/CoderPadMCP/documentation/coderpadmcp) |
-[Swift Package Index](https://swiftpackageindex.com/adamtheturtle/CoderPadMCP)
+[Documentation](https://swiftpackageindex.com/adamtheturtle/CoderPadMCP/documentation/coderpadmcp) | [Swift Package Index](https://swiftpackageindex.com/adamtheturtle/CoderPadMCP)
 
-CoderPadMCP gives assistants controlled access to pads, questions, organization data,
-quota information, and CoderPad Screen assessments. Reads are enabled by default.
+CoderPadMCP gives assistants controlled access to pads, questions, organization data, quota information, and CoderPad Screen assessments.
+Reads are enabled by default.
 Create and update tools require an explicit opt-in, and deletion is never exposed.
 
 ## Installation
@@ -19,15 +17,12 @@ Create and update tools require an explicit opt-in, and deletion is never expose
 )
 ```
 
-Add the `CoderPadMCP` product to an application target, or install and run the bundled
-`coderpad-mcp` executable.
+Add the `CoderPadMCP` product to an application target, or install and run the bundled `coderpad-mcp` executable.
 
 ## Products
 
-- `CoderPadMCP`: Account configuration, MCP tools, prompts, resources, and the reusable
-  ``CoderPadProvider``.
-- `CoderPadToolCore`: Foundation-only validation and data transforms used by the MCP
-  provider.
+- `CoderPadMCP`: Account configuration, MCP tools, prompts, resources, and the reusable ``CoderPadProvider``.
+- `CoderPadToolCore`: Foundation-only validation and data transforms used by the MCP provider.
 - `coderpad-mcp`: A stdio server for editors, agents, and other MCP clients.
 
 ## Embedding
@@ -56,14 +51,12 @@ let server = MCPServer(
 )
 ```
 
-The provider implements MCP tools, prompts, resources, resource templates, and resource
-reads. The host chooses the MCP transport and controls where credentials come from.
+The provider implements MCP tools, prompts, resources, resource templates, and resource reads.
+The host chooses the MCP transport and controls where credentials come from.
 
 ## Standalone server
 
-Download a signed macOS or Linux executable from
-[GitHub Releases](https://github.com/adamtheturtle/CoderPadMCP/releases), or build
-the server from source:
+Download a signed macOS or Linux executable from [GitHub Releases](https://github.com/adamtheturtle/CoderPadMCP/releases), or build the server from source:
 
 ```sh
 swift build -c release
@@ -85,10 +78,9 @@ Configure an MCP client with the built executable:
 }
 ```
 
-For multiple accounts, set `CODERPAD_MCP_CONFIG` to a user-owned JSON file readable
-only by that user (mode `0600`, no group/other bits, and no ACL grants to other
-users). A blank or whitespace-only `CODERPAD_MCP_CONFIG` is an error; it does not
-fall back to the default path or environment credentials.
+For multiple accounts, set `CODERPAD_MCP_CONFIG` to a user-owned JSON file readable only by that user (mode `0600` without group, other, or ACL access).
+A blank or whitespace-only `CODERPAD_MCP_CONFIG` is an error.
+It does not fall back to the default path or environment credentials.
 
 ```json
 {
@@ -119,8 +111,7 @@ The provider includes:
 - review, summary, comparison, and question-drafting prompts;
 - opt-in pad and question creation and updates, including dry runs.
 
-API responses are returned as JSON so clients retain fields added by CoderPad without
-waiting for a library release.
+API responses are returned as JSON so clients retain fields added by CoderPad without waiting for a library release.
 
 ## Security
 
@@ -138,4 +129,5 @@ waiting for a library release.
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT.
+See [LICENSE](LICENSE).
