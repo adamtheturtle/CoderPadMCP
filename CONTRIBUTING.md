@@ -10,5 +10,5 @@ swiftlint lint --strict
 swiftformat . --lint
 ```
 
-Never commit CoderPad API keys, Screen API keys, real interview content, or configuration
-files containing credentials. Tests should use synthetic fixtures and local transports.
+Never commit CoderPad API keys, Screen API keys, real interview content, or configuration files containing credentials.
+Tests should use synthetic fixtures and local transports.
