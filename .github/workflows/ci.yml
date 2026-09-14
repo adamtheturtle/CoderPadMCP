@@ -58,6 +58,8 @@ jobs:
       # ``.vale.ini`` and ``vale sync`` downloads it into the gitignored
       # ``styles`` directory.
       - name: Sync Vale styles
+        # The Python Vale wrapper may fail transiently while downloading its binary; see
+        # https://github.com/daniperez/vale-python-package/issues/77
         run: uvx vale@3.13.0.0 sync
       - name: Lint prose
         run: git ls-files '*.md' | xargs --no-run-if-empty uvx vale@3.13.0.0
