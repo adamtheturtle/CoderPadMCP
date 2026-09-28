@@ -124,7 +124,7 @@ API responses are returned as JSON so clients retain fields added by CoderPad wi
 
 ## Requirements
 
-- Swift 6.2+
+- Swift 6.4+
 - macOS 15+ or Linux
 
 ## License
