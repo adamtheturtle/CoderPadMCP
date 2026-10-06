@@ -23,6 +23,7 @@ struct AccountsTests {
         #expect(defaultAccount.name == "default")
         #expect(defaultAccount.apiKey == "k1")
         #expect(defaultAccount.baseURL.absoluteString == "https://coderpad.acme.internal")
+        #expect(defaultAccount.screenBaseURL.absoluteString == "https://screen.coderpad.io")
         #expect(!set.allowWrites)
 
         #expect(throws: MCPConfigError.noAccounts) {

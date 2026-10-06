@@ -85,7 +85,7 @@ public struct MCPAccount: Equatable, Sendable {
     public var screenBaseURL: URL {
         screenRegion == "eu"
             ? URL(string: "https://www.codingame.eu")!
-            : URL(string: "https://www.codingame.com")!
+            : URL(string: "https://screen.coderpad.io")!
     }
 }
 
