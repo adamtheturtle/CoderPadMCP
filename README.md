@@ -131,3 +131,8 @@ API responses are returned as JSON so clients retain fields added by CoderPad wi
 
 MIT.
 See [LICENSE](LICENSE).
+
+Internal pad scans follow both page and opaque cursor continuations.
+Requests keep the selected account’s configured API origin and credentials.
+Continuation URLs supply only a page or cursor value.
+Cycles and incomplete scans are reported as errors rather than complete counts or aggregates.

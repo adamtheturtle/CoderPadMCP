@@ -50,13 +50,13 @@ private func fetchAllPads(
     }
 
     var scan = PadPageScan()
-    var page: String?
+    var continuation = NextPageContinuation.finished
     var tokens = PaginationTokenTracker()
     var records = RecordIdentityTracker()
     while scan.pagesFetched < maxPadPagesToFetch {
         var query: [URLQueryItem] = []
-        if let page {
-            query.append(URLQueryItem(name: "page", value: page))
+        if let item = continuation.queryItem {
+            query.append(item)
         }
         let response = try await apiGet("/api/pads/", account: account, query: query)
         guard response.ok, let object = jsonObject(response.data) else {
@@ -85,15 +85,16 @@ private func fetchAllPads(
         consume(unique)
         scan.scanned += unique.count
         scan.pagesFetched += 1
-        switch nextPageContinuation(object["next_page"]) {
+        let nextContinuation = nextPageContinuation(object["next_page"])
+        switch nextContinuation {
         case .finished:
             return finalizePadScan(scan)
-        case let .page(next):
-            guard tokens.accept(next) else {
+        case let .page(next), let .cursor(next):
+            guard tokens.accept(nextContinuation) else {
                 scan.paginationError = "Pad pagination repeated next_page token \"\(next)\"; the scan is incomplete."
                 return scan
             }
-            page = next
+            continuation = nextContinuation
         case .malformed:
             scan.paginationError = "Pad pagination returned a malformed next_page; the scan is incomplete."
             return scan
@@ -574,13 +575,13 @@ private func fetchAllQuestions(
     }
 
     var scan = QuestionPageScan()
-    var page: String?
+    var continuation = NextPageContinuation.finished
     var tokens = PaginationTokenTracker()
     var records = RecordIdentityTracker()
     while scan.pagesFetched < maxPadPagesToFetch {
         var query: [URLQueryItem] = []
-        if let page {
-            query.append(URLQueryItem(name: "page", value: page))
+        if let item = continuation.queryItem {
+            query.append(item)
         }
         let response = try await apiGet("/api/questions/", account: account, query: query)
         guard response.ok, let object = jsonObject(response.data) else {
@@ -611,15 +612,16 @@ private func fetchAllQuestions(
         consume(unique)
         scan.scanned += unique.count
         scan.pagesFetched += 1
-        switch nextPageContinuation(object["next_page"]) {
+        let nextContinuation = nextPageContinuation(object["next_page"])
+        switch nextContinuation {
         case .finished:
             return finalizeQuestionScan(scan)
-        case let .page(next):
-            guard tokens.accept(next) else {
+        case let .page(next), let .cursor(next):
+            guard tokens.accept(nextContinuation) else {
                 scan.paginationError = "Question pagination repeated next_page token \"\(next)\"; the scan is incomplete."
                 return scan
             }
-            page = next
+            continuation = nextContinuation
         case .malformed:
             scan.paginationError = "Question pagination returned a malformed next_page; the scan is incomplete."
             return scan
