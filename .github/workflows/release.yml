@@ -245,8 +245,11 @@ jobs:
           package_name="coderpad-mcp-${version}-linux-x86_64"
           package_dir="$RUNNER_TEMP/$package_name"
           mkdir -p "$package_dir" dist
-          swift build -c release --static-swift-stdlib
-          binary="$(swift build -c release --static-swift-stdlib --show-bin-path)/coderpad-mcp"
+          # Swift 6.4's default SwiftBuild engine omits static Foundation shims.
+          # Remove the native fallback when the toolchain includes this fix:
+          # https://github.com/swiftlang/swift-build/issues/1764
+          swift build -c release --build-system native --static-swift-stdlib
+          binary="$(swift build -c release --build-system native --static-swift-stdlib --show-bin-path)/coderpad-mcp"
           cp "$binary" LICENSE README.md "$package_dir/"
           tar -C "$RUNNER_TEMP" -czf "dist/$package_name.tar.gz" "$package_name"
           (
