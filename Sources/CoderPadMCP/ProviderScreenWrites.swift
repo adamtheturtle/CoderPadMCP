@@ -106,17 +106,18 @@ private func writeArgumentValidationError(name: String, arguments: [String: Valu
         ],
         "create_question": [
             mcpAccountArgument, "title", "language", "description", "solution", "contents", "dry_run",
+            "candidate_instructions", "ai_assist_custom_system_prompt", "shared", "custom_database_id",
         ],
         "update_question": [
             mcpAccountArgument, "question", "title", "language", "description", "solution",
-            "contents", "dry_run",
+            "contents", "dry_run", "candidate_instructions", "ai_assist_custom_system_prompt", "shared", "custom_database_id",
         ],
     ]
     let budgetedWriteFields = [
         "create_pad": ["title", "language", "contents", "owner_email", "notes", "team_id"],
         "update_pad": ["title", "notes", "owner_email", "language"],
-        "create_question": ["title", "language", "description", "solution", "contents"],
-        "update_question": ["title", "language", "description", "solution", "contents"],
+        "create_question": ["title", "language", "description", "solution", "contents", "ai_assist_custom_system_prompt"],
+        "update_question": ["title", "language", "description", "solution", "contents", "ai_assist_custom_system_prompt"],
     ]
     if let allowed = writeArgumentAllowlists[name],
        let error = unknownWriteArgumentError(arguments, allowed: allowed)

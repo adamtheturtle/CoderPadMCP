@@ -204,3 +204,8 @@ Pad creation and updates accept waiting-room privacy, execution, interviewer res
 Creation also accepts take-home mode, its time limit in minutes, and AI assistance.
 Omitted settings retain account defaults.
 Explicit false values and empty email lists are preserved in requests and dry-run previews.
+
+Question writes accept instruction steps with optional names and visibility, an AI Assist system prompt, sharing, and a custom database ID.
+Instructions are encoded as a JSON string.
+Empty instruction arrays, empty prompts, and false sharing values are preserved.
+Dry runs preview the exact request, and permission or plan restrictions remain API errors.
