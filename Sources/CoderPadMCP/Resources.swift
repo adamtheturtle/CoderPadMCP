@@ -102,11 +102,19 @@ public let accountResourceTemplates: [Resource.Template] = [
     ),
 ]
 
+public let screenProjectResourceTemplates: [Resource.Template] = [
+    Resource.Template(
+        uriTemplate: "coderpad://account/{account}/screen-project/{test}/{question}",
+        name: "Candidate project archive",
+        description: "A binary tar.gz archive for a Screen session's UUID project question. At most 8 MiB.",
+        mimeType: "application/gzip",
+    ),
+]
+
 public func resourceTemplates(for accountSet: MCPAccountSet) -> [Resource.Template] {
     guard !accountSet.accounts.isEmpty else { return [] }
-    guard accountSet.accounts.count > 1 else { return resourceTemplates }
-
-    return accountResourceTemplates
+    let interview = accountSet.accounts.count > 1 ? accountResourceTemplates : resourceTemplates
+    return interview + (accountSet.anyScreenEnabled ? screenProjectResourceTemplates : [])
 }
 
 /// A parsed `coderpad://` resource request, decoupling URI shape from the fetch.
@@ -116,11 +124,13 @@ public enum ResourceRequest: Equatable {
     case pad(String)
     case padCode(String)
     case question(Int)
+    case screenProjectArchive(test: Int, question: UUID)
     case accountQuota(String)
     case accountOrganization(String)
     case accountPad(account: String, id: String)
     case accountPadCode(account: String, id: String)
     case accountQuestion(account: String, id: Int)
+    case accountScreenProjectArchive(account: String, test: Int, question: UUID)
 
     public var accountName: String? {
         switch self {
@@ -128,7 +138,8 @@ public enum ResourceRequest: Equatable {
              let .accountOrganization(account),
              let .accountPad(account, _),
              let .accountPadCode(account, _),
-             let .accountQuestion(account, _):
+             let .accountQuestion(account, _),
+             let .accountScreenProjectArchive(account, _, _):
             account
         default:
             nil
@@ -137,7 +148,7 @@ public enum ResourceRequest: Equatable {
 
     public var unqualified: Self {
         switch self {
-        case .quota, .organization, .pad, .padCode, .question:
+        case .quota, .organization, .pad, .padCode, .question, .screenProjectArchive:
             self
         case .accountQuota:
             .quota
@@ -149,6 +160,8 @@ public enum ResourceRequest: Equatable {
             .padCode(id)
         case let .accountQuestion(_, id):
             .question(id)
+        case let .accountScreenProjectArchive(_, test, question):
+            .screenProjectArchive(test: test, question: question)
         }
     }
 }
@@ -222,6 +235,9 @@ private func isRoute(_ segment: String?, _ literal: String) -> Bool {
 }
 
 private func parseUnqualifiedResource(_ decoded: [String]) -> ResourceRequest? {
+    if isRoute(decoded.first, "screen-project"), decoded.count == 3 {
+        return parsedScreenProject(test: decoded[1], question: decoded[2])
+    }
     if isRoute(decoded.first, "quota"), decoded.count == 1 {
         return .quota
     }
@@ -241,6 +257,12 @@ private func parseAccountResource(_ decoded: [String]) -> ResourceRequest? {
     guard decoded.count >= 3, isRoute(decoded[0], "account"), !decoded[1].isEmpty else { return nil }
 
     let account = decoded[1]
+    if isRoute(decoded[2], "screen-project"), decoded.count == 5,
+       let request = parsedScreenProject(test: decoded[3], question: decoded[4]),
+       case let .screenProjectArchive(test, question) = request
+    {
+        return .accountScreenProjectArchive(account: account, test: test, question: question)
+    }
     if isRoute(decoded[2], "quota"), decoded.count == 3 {
         return .accountQuota(account)
     }
@@ -311,7 +333,7 @@ public func resolveResourceAccount(_ request: ResourceRequest, accountSet: MCPAc
     return .account(defaultAccount)
 }
 
-private func resourcePathComponent(_ value: String) -> String {
+func resourcePathComponent(_ value: String) -> String {
     var allowed = CharacterSet.urlPathAllowed
     allowed.remove(charactersIn: "/")
     if let encoded = value.addingPercentEncoding(withAllowedCharacters: allowed) {
@@ -321,4 +343,9 @@ private func resourcePathComponent(_ value: String) -> String {
     // Guaranteed byte-level fallback: returning the raw value here could emit a
     // slash or control character into a URI and change resource routing (#1584).
     return value.utf8.map { String(format: "%%%02X", $0) }.joined()
+}
+
+private func parsedScreenProject(test: String, question: String) -> ResourceRequest? {
+    guard let test = Int(test), test > 0, test <= Int(Int32.max), let question = UUID(uuidString: question) else { return nil }
+    return .screenProjectArchive(test: test, question: question)
 }

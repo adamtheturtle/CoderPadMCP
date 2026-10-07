@@ -613,7 +613,10 @@ private func readCoderPadResource(
         let json = try await padCodeJSON(id: id, maxFileChars: nil, account: account)
         return ReadResource.Result(contents: [.text(json, uri: uri, mimeType: "application/json")])
 
-    case .accountQuota, .accountOrganization, .accountPad, .accountPadCode, .accountQuestion:
+    case let .screenProjectArchive(test, question):
+        return try await readScreenProjectArchive(test: test, question: question, uri: uri, account: account)
+
+    case .accountQuota, .accountOrganization, .accountPad, .accountPadCode, .accountQuestion, .accountScreenProjectArchive:
         // The caller resolves the account and passes `request.unqualified`, so these
         // only arrive if a new call site forgets to; strip the qualifier and recurse.
         return try await readCoderPadResource(request.unqualified, uri: uri, account: account)

@@ -170,3 +170,9 @@ The selected account must have both a Screen key and write permission.
 Omitted settings keep team defaults, and explicit false values and empty lists are preserved.
 Dry runs preview the validated request without creating a campaign or returning an invented ID.
 Creation uses one bounded POST and is never automatically retried.
+
+`screen_project_archive` returns a credential-free resource link for a candidate project tar.gz archive.
+Read the linked resource to download binary content as an MCP blob.
+Resources use the selected account's Screen key, an 8 MiB ceiling, and a 120-second request timeout, with normal cancellation and API errors.
+The server does not extract or execute archive files.
+Archive reads require Screen access and are available without enabling writes.
