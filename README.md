@@ -141,3 +141,8 @@ Cycles and incomplete scans are reported as errors rather than complete counts o
 Set `withCommunityStats` to include community statistics.
 This tool makes one JSON request.
 It does not fetch the PDF export or candidate media.
+
+Question list tools accept server-side `text` search and a `pad_types` array of `any`, `live`, or `take_home`.
+Categories use repeated query keys, and empty text is preserved.
+Question lists also sort by `title` or `used`, with optional `asc` or `desc` directions.
+Count and aggregate tools retain search filters across every page or cursor and bypass unfiltered host caches.

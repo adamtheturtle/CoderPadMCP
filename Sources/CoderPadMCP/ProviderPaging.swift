@@ -568,9 +568,10 @@ private struct QuestionPageScan {
 private func fetchAllQuestions(
     account: MCPAccount,
     cache: CoderPadMCPCache?,
+    searchQuery: [URLQueryItem] = [],
     consume: ([[String: Any]]) -> Void,
 ) async throws -> QuestionPageScan {
-    if let questions = cachedRecords(.questions, account: account, requireFresh: true, cache: cache) {
+    if searchQuery.isEmpty, let questions = cachedRecords(.questions, account: account, requireFresh: true, cache: cache) {
         return consumeUniqueQuestions(questions, into: QuestionPageScan(), consume: consume)
     }
 
@@ -579,7 +580,7 @@ private func fetchAllQuestions(
     var tokens = PaginationTokenTracker()
     var records = RecordIdentityTracker()
     while scan.pagesFetched < maxPadPagesToFetch {
-        var query: [URLQueryItem] = []
+        var query = searchQuery
         if let item = continuation.queryItem {
             query.append(item)
         }
@@ -671,13 +672,19 @@ func countQuestions(
 ) async throws -> CallTool.Result {
     if let error = unknownArgumentError(
         arguments,
-        allowed: [mcpAccountArgument, "owner", "author", "language", "type", "created_after", "created_before"],
+        allowed: [mcpAccountArgument, "owner", "author", "language", "type", "created_after", "created_before", "text", "pad_types"],
     ) {
         return errorResult(error)
     }
 
     if let error = questionFilterTypeError(arguments) {
         return errorResult(error)
+    }
+    let searchQuery: [URLQueryItem]
+    do {
+        searchQuery = try questionSearchQuery(arguments)
+    } catch {
+        return errorResult(error.message)
     }
     let owner = stringArgument(arguments, "owner")
     let author = stringArgument(arguments, "author")
@@ -689,7 +696,7 @@ func countQuestions(
         return errorResult(error)
     }
 
-    if !hasActiveQuestionFilters(
+    if searchQuery.isEmpty, !hasActiveQuestionFilters(
         owner: owner, author: author, language: language, type: type, after: after, before: before,
     ) {
         if let shortCircuit = try await unfilteredCountFromFirstPage(
@@ -709,7 +716,7 @@ func countQuestions(
     let dateFilterActive = normalizedFilterValue(after) != nil || normalizedFilterValue(before) != nil
     var matched = 0
     var unusableCreatedAt = 0
-    let scan = try await fetchAllQuestions(account: account, cache: cache) { questions in
+    let scan = try await fetchAllQuestions(account: account, cache: cache, searchQuery: searchQuery) { questions in
         for question in questions where matcher.matches(question) {
             if dateFilterActive {
                 switch createdAtPresence(question) {
@@ -749,6 +756,7 @@ func countQuestions(
     }
     var filters = questionFiltersEcho(owner: owner, author: author, language: language, type: type)
     addDateFilters(&filters, after: after, before: before)
+    questionSearchEcho(arguments, into: &filters)
     if !filters.isEmpty {
         result["filters"] = filters
     }
@@ -771,7 +779,7 @@ func aggregateQuestionsTool(
 ) async throws -> CallTool.Result {
     if let error = unknownArgumentError(
         arguments,
-        allowed: [mcpAccountArgument, "group_by", "owner", "author", "language", "type", "created_after", "created_before"],
+        allowed: [mcpAccountArgument, "group_by", "owner", "author", "language", "type", "created_after", "created_before", "text", "pad_types"],
     ) {
         return errorResult(error)
     }
@@ -788,6 +796,12 @@ func aggregateQuestionsTool(
 
     if let error = questionFilterTypeError(arguments) {
         return errorResult(error)
+    }
+    let searchQuery: [URLQueryItem]
+    do {
+        searchQuery = try questionSearchQuery(arguments)
+    } catch {
+        return errorResult(error.message)
     }
     let owner = stringArgument(arguments, "owner")
     let author = stringArgument(arguments, "author")
@@ -806,7 +820,7 @@ func aggregateQuestionsTool(
     var matched = 0
     var unusableCreatedAt = 0
     var accumulation = AggregateAccumulation()
-    let scan = try await fetchAllQuestions(account: account, cache: cache) { questions in
+    let scan = try await fetchAllQuestions(account: account, cache: cache, searchQuery: searchQuery) { questions in
         let page = questions.filter { question in
             guard matcher.matches(question) else { return false }
             if dateFilterActive {
@@ -850,6 +864,7 @@ func aggregateQuestionsTool(
     ]
     var filters = questionFiltersEcho(owner: owner, author: author, language: language, type: type)
     addDateFilters(&filters, after: after, before: before)
+    questionSearchEcho(arguments, into: &filters)
     if !filters.isEmpty {
         result["filters"] = filters
     }
@@ -872,38 +887,23 @@ func aggregateQuestionsTool(
 }
 
 func listQuestions(arguments: [String: Value]?, account: MCPAccount) async throws -> CallTool.Result {
-    if let error = pageValidationError(strictIntArgument(arguments, "page")) {
-        return errorResult(error)
+    let query: [URLQueryItem]
+    do {
+        query = try questionListQuery(arguments)
+    } catch {
+        return errorResult(error.message)
     }
-    if let error = listSortTypeError(arguments) {
-        return errorResult(error)
-    }
-    if let error = pagingSortValidationError(stringArgument(arguments, "sort")) {
-        return errorResult(error)
-    }
-
-    return try await toolResult(apiGet("/api/questions/", account: account, query: pagingQuery(arguments)))
+    return try await toolResult(apiGet("/api/questions/", account: account, query: query))
 }
 
 func listQuestionsCompact(arguments: [String: Value]?, account: MCPAccount) async throws -> CallTool.Result {
-    if let error = unknownArgumentError(
-        arguments,
-        allowed: [mcpAccountArgument, "page", "sort"],
-    ) {
-        return errorResult(error)
+    let query: [URLQueryItem]
+    do {
+        query = try questionListQuery(arguments)
+    } catch {
+        return errorResult(error.message)
     }
-
-    if let error = pageValidationError(strictIntArgument(arguments, "page")) {
-        return errorResult(error)
-    }
-    if let error = listSortTypeError(arguments) {
-        return errorResult(error)
-    }
-    if let error = pagingSortValidationError(stringArgument(arguments, "sort")) {
-        return errorResult(error)
-    }
-
-    let response = try await apiGet("/api/questions/", account: account, query: pagingQuery(arguments))
+    let response = try await apiGet("/api/questions/", account: account, query: query)
     guard response.ok, let object = jsonObject(response.data) else { return toolResult(response) }
     guard let questions = object["questions"] as? [[String: Any]] else {
         return errorResult(invalidListResponseMessage("/api/questions/", expecting: "questions", body: response.body))

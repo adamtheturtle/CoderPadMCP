@@ -142,7 +142,7 @@ private nonisolated(unsafe) let questionFilterProperties: [String: [String: Any]
         "type": mcpStringSchema("Only questions of this pad_type (e.g. \"sandbox\", \"take_home\")."),
         "created_after": mcpStringSchema(mcpDateBoundDescription(bound: "on or after")),
         "created_before": mcpStringSchema(mcpDateBoundDescription(bound: "on or before")),
-    ]
+    ].merging(questionSearchProperties) { _, new in new }
 
 private nonisolated(unsafe) let pagingProperties: [String: [String: Any]] =
     [
@@ -229,8 +229,8 @@ public nonisolated(unsafe) let coderPadReadToolDescriptors: [[String: Any]] =
         ),
         mcpToolDescriptor(
             "list_questions",
-            "List the account's question bank. Optional page and sort.",
-            properties: withAccount(pagingProperties),
+            "List the account's question bank with optional page, question sort, text search, and usage categories.",
+            properties: withAccount(questionPagingProperties),
         ),
         mcpToolDescriptor(
             "get_question",
@@ -258,7 +258,7 @@ public nonisolated(unsafe) let coderPadReadToolDescriptors: [[String: Any]] =
             "list_questions_compact",
             "Like list_questions but returns only id, title, owner_email, author_name, language, pad_type, "
                 + "is_draft, and created_at per question, so far more rows fit per response.",
-            properties: withAccount(pagingProperties),
+            properties: withAccount(questionPagingProperties),
         ),
         mcpToolDescriptor(
             "get_quota",

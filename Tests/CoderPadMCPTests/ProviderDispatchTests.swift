@@ -127,7 +127,7 @@ struct ProviderDispatchTests {
         }
 
         for name in ["list_pads", "list_questions"] {
-            let result = try await provider.callTool(name, arguments: ["sort": .string("title")])
+            let result = try await provider.callTool(name, arguments: ["sort": .string("state")])
             #expect(result.isError == true)
         }
     }
