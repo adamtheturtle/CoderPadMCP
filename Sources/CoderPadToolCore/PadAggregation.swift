@@ -21,18 +21,29 @@ public enum NextPageContinuation: Equatable, Sendable {
     case finished
     /// A bounded page token for the next request.
     case page(String)
+    /// A bounded opaque cursor for the next request.
+    case cursor(String)
     /// A present value that is not a valid continuation.
     case malformed
+
+    /// Only query data is retained; the configured account origin always selects the destination.
+    public var queryItem: URLQueryItem? {
+        switch self {
+        case let .page(token): URLQueryItem(name: "page", value: token)
+        case let .cursor(token): URLQueryItem(name: "cursor", value: token)
+        case .finished, .malformed: nil
+        }
+    }
 }
 
 /// Interprets a `next_page` value (an absolute/relative continuation URL, a string page
 /// token, or a number in some responses). CoderPad's published response shape uses an
 /// absolute URL, but the provider rebuilds requests against the configured account
 /// origin rather than following a server-supplied URL with credentials. Extracting
-/// only its `page` query value preserves that boundary. Plain tokens remain compatible
+/// only its `page` or `cursor` query value preserves that boundary. Plain tokens remain compatible
 /// with proxies that return only the page value, and positive whole numbers are
 /// accepted in JSON numeric forms (#1599). Booleans, zero, negative values, fractional
-/// values, URL-shaped strings without exactly one `page` query, and oversized tokens
+/// values, URL-shaped strings without exactly one `page` or `cursor` query, and oversized tokens
 /// are malformed rather than finished.
 public func nextPageContinuation(_ value: Any?) -> NextPageContinuation {
     if value == nil || value is NSNull {
@@ -47,16 +58,16 @@ public func nextPageContinuation(_ value: Any?) -> NextPageContinuation {
         guard !trimmed.isEmpty else { return .finished }
 
         if let components = URLComponents(string: trimmed), isURLShapedPaginationToken(trimmed, components) {
-            let pageItems = (components.queryItems ?? []).filter { $0.name == "page" }
-            guard pageItems.count == 1,
-                  let page = pageItems[0].value?
+            let items = (components.queryItems ?? []).filter { $0.name == "page" || $0.name == "cursor" }
+            guard items.count == 1,
+                  let page = items[0].value?
                   .trimmingCharacters(in: .whitespacesAndNewlines),
                   !page.isEmpty,
                   let bounded = boundedPaginationToken(page)
             else {
                 return .malformed
             }
-            return .page(bounded)
+            return items[0].name == "cursor" ? .cursor(bounded) : .page(bounded)
         }
         guard let bounded = boundedPaginationToken(trimmed) else { return .malformed }
         return .page(bounded)
@@ -79,7 +90,7 @@ public func nextPageContinuation(_ value: Any?) -> NextPageContinuation {
 
 /// Convenience for callers that only need a usable token. Returns nil for both
 /// finished and malformed continuations; prefer `nextPageContinuation` when the
-/// distinction matters.
+/// distinction matters. Cursor continuations require their own query key and return nil here.
 public func nextPageToken(_ value: Any?) -> String? {
     if case let .page(token) = nextPageContinuation(value) {
         return token
@@ -88,7 +99,7 @@ public func nextPageToken(_ value: Any?) -> String? {
 }
 
 /// Absolute URLs, rooted paths, and any string carrying a query are treated as
-/// continuation URLs and must expose exactly one nonempty `page` parameter.
+/// continuation URLs and must expose exactly one nonempty `page` or `cursor` parameter.
 private func isURLShapedPaginationToken(_ trimmed: String, _ components: URLComponents) -> Bool {
     components.scheme != nil
         || components.host != nil
@@ -102,6 +113,13 @@ public struct PaginationTokenTracker: Sendable {
     private var seen: Set<String> = []
 
     public init() {}
+
+    /// Keeps page and cursor namespaces distinct, including when their values happen to match.
+    public mutating func accept(_ continuation: NextPageContinuation) -> Bool {
+        guard let item = continuation.queryItem, let token = item.value,
+              boundedPaginationToken(token) != nil else { return false }
+        return seen.insert("\(item.name):\(token)").inserted
+    }
 
     public mutating func accept(_ token: String) -> Bool {
         guard boundedPaginationToken(token) != nil else { return false }
