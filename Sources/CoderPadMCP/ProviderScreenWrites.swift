@@ -26,6 +26,9 @@ func dispatchScreenOrWrite(
     case "screen_create_campaign":
         return try await screenCreateCampaign(arguments, account: account)
 
+    case "screen_project_archive":
+        return screenProjectArchiveLink(arguments, account: account)
+
     case "screen_list_campaigns":
         if let error = unknownArgumentError(arguments, allowed: [mcpAccountArgument]) {
             return errorResult(error)
