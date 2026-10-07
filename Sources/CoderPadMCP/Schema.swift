@@ -21,11 +21,13 @@ public func availableTools(
     writesEnabled: Bool,
     requireAccountForScreen: Bool = false,
     requireAccountForWrites: Bool = false,
+    screenWritesEnabled: Bool? = nil,
 ) -> [Tool] {
     mcpTools(from: coderPadToolDescriptors(
         screenEnabled: screenEnabled,
         writesEnabled: writesEnabled,
         requireAccountForScreen: requireAccountForScreen,
         requireAccountForWrites: requireAccountForWrites,
+        screenWritesEnabled: screenWritesEnabled,
     ))
 }

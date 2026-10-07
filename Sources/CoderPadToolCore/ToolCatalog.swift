@@ -316,7 +316,7 @@ public nonisolated(unsafe) let coderPadScreenToolDescriptors: [[String: Any]] =
             ]),
             required: ["test"],
         ),
-    ] + coderPadScreenAIToolDescriptors
+    ] + coderPadScreenAIToolDescriptors + screenCampaignWriteDescriptors
 
 /// Write tools (create/edit), advertised only when writes are opted in. There is no
 /// delete tool by design (#502): deletion stays a human action in the app.
@@ -445,12 +445,12 @@ public nonisolated(unsafe) let coderPadWriteToolDescriptors: [[String: Any]] =
 /// filter and the call gate can't drift apart.
 public let coderPadWriteToolNames: Set<String> = [
     "create_pad", "update_pad", "create_question", "update_question",
-    "create_question_variant", "update_question_variant",
+    "create_question_variant", "update_question_variant", "screen_create_campaign",
 ]
 
 /// The names of the Screen tools, advertised only when Screen is configured.
 public let coderPadScreenToolNames: Set<String> = [
-    "screen_list_campaigns", "screen_list_tests", "screen_get_test", "screen_ai_assist_conversations",
+    "screen_list_campaigns", "screen_list_tests", "screen_get_test", "screen_ai_assist_conversations", "screen_create_campaign",
 ]
 
 /// The full catalog to advertise: Screen tools appear only when Screen is configured, and
@@ -462,12 +462,18 @@ public func coderPadToolDescriptors(
     writesEnabled: Bool,
     requireAccountForScreen: Bool = false,
     requireAccountForWrites: Bool = false,
+    screenWritesEnabled: Bool? = nil,
 ) -> [[String: Any]] {
     var result = coderPadReadToolDescriptors
     if screenEnabled {
-        let screen = requireAccountForScreen
-            ? coderPadScreenToolDescriptors.map(requiringAccountArgument)
-            : coderPadScreenToolDescriptors
+        let screen = coderPadScreenToolDescriptors.filter { descriptor in
+            let name = descriptor["name"] as? String ?? ""
+            return !coderPadWriteToolNames.contains(name) || (writesEnabled && (screenWritesEnabled ?? true))
+        }.map { descriptor in
+            let name = descriptor["name"] as? String ?? ""
+            let required = requireAccountForScreen || (coderPadWriteToolNames.contains(name) && requireAccountForWrites)
+            return required ? requiringAccountArgument(descriptor) : descriptor
+        }
         result += screen
     }
     if writesEnabled {
