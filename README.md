@@ -146,3 +146,14 @@ Question list tools accept server-side `text` search and a `pad_types` array of 
 Categories use repeated query keys, and empty text is preserved.
 Question lists also sort by `title` or `used`, with optional `asc` or `desc` directions.
 Count and aggregate tools retain search filters across every page or cursor and bypass unfiltered host caches.
+
+Question variants are addressed by parent question and variant IDs.
+Use `list_question_variants` and `get_question_variant` to read full starter code and project files.
+Opt-in `create_question_variant` and `update_question_variant` writes support `dry_run` previews and invalidate the selected account’s question cache after success.
+Omitted `contents` preserves code, an empty string writes blank code, and JSON null restores language defaults.
+Omitted `file_contents` preserves files, while an empty array resets template files.
+Structured entries retain `hidden` and `deleted` flags.
+Code and file arrays are mutually exclusive.
+Each string is limited to 512 KiB and the complete write body to 1 MiB.
+Mutations are attempted once.
+Variant deletion remains a human action.
