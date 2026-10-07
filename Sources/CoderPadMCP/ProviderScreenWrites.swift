@@ -97,10 +97,12 @@ private func writeArgumentValidationError(name: String, arguments: [String: Valu
     let writeArgumentAllowlists: [String: Set<String>] = [
         "create_pad": [
             mcpAccountArgument, "title", "language", "question_id", "contents", "owner_email",
-            "notes", "team_id", "dry_run",
+            "notes", "team_id", "dry_run", "private", "execution_enabled", "restrict_interviewer_access",
+            "allowed_interviewer_emails", "disable_coaching_tips", "take_home", "take_home_time_limit", "ai_assist_enabled",
         ],
         "update_pad": [
-            mcpAccountArgument, "pad", "title", "notes", "owner_email", "language", "dry_run",
+            mcpAccountArgument, "pad", "title", "notes", "owner_email", "language", "dry_run", "private",
+            "execution_enabled", "restrict_interviewer_access", "allowed_interviewer_emails", "disable_coaching_tips",
         ],
         "create_question": [
             mcpAccountArgument, "title", "language", "description", "solution", "contents", "dry_run",

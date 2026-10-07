@@ -199,3 +199,8 @@ Existing project source archives are replaced in the question editor.
 When Screen credentials are configured, `screen_identity` includes organization, recruiter, and team identities with default-team flags.
 Identity lookup failures are returned as tool errors.
 Display names and analytics identifiers do not establish user email addresses or organization roles.
+
+Pad creation and updates accept waiting-room privacy, execution, interviewer restrictions, replacement email lists, and coaching settings.
+Creation also accepts take-home mode, its time limit in minutes, and AI assistance.
+Omitted settings retain account defaults.
+Explicit false values and empty email lists are preserved in requests and dry-run previews.
