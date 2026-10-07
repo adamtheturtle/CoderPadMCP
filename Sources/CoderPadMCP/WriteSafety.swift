@@ -126,7 +126,7 @@ public func integerArgumentNames(forTool name: String) -> [String] {
         ["question", "variant"]
     case "screen_list_tests":
         ["campaignId", "start", "limit"]
-    case "screen_get_test":
+    case "screen_get_test", "screen_ai_assist_conversations":
         ["test"]
     case "create_pad":
         ["question_id"]
