@@ -354,7 +354,7 @@ public nonisolated(unsafe) let coderPadWriteToolDescriptors: [[String: Any]] =
                     maxLength: 36,
                 ),
                 "dry_run": mcpBoolSchema("Validate and preview the request without creating anything."),
-            ]),
+            ].merging(padCreationControlProperties) { _, new in new }),
             schemaExtras: [
                 "additionalProperties": false,
                 "not": ["required": ["question_id", "contents"]],
@@ -363,7 +363,7 @@ public nonisolated(unsafe) let coderPadWriteToolDescriptors: [[String: Any]] =
         ),
         mcpToolDescriptor(
             "update_pad",
-            "Edit a pad's title, notes, owner, or language. Does not change or reset the pad's code, and "
+            "Edit a pad's title, notes, owner, language, access, execution, or coaching settings. Does not change or reset the pad's code, and "
                 + "cannot delete it.",
             properties: withAccount([
                 "pad": mcpStringSchema("The pad's slug or id."),
@@ -380,7 +380,7 @@ public nonisolated(unsafe) let coderPadWriteToolDescriptors: [[String: Any]] =
                     allowedValues: creatablePadLanguages,
                 ),
                 "dry_run": mcpBoolSchema("Validate and preview the request without changing the pad."),
-            ]),
+            ].merging(padControlProperties) { _, new in new }),
             required: ["pad"],
             schemaExtras: ["additionalProperties": false],
             annotations: writeAnnotations(title: "Update pad", destructive: true),

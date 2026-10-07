@@ -634,7 +634,12 @@ func createPad(arguments: [String: Value]?, account: MCPAccount) async throws ->
         return errorResult(error)
     }
 
-    var body: [String: Any] = [:]
+    var body: [String: Any]
+    do {
+        body = try padControlBody(arguments, creating: true)
+    } catch {
+        return errorResult(error.message)
+    }
     if let title {
         body["title"] = title
     }
@@ -678,7 +683,12 @@ func updatePad(id: String, arguments: [String: Value]?, account: MCPAccount) asy
         return errorResult(error)
     }
     let language = validatedCreatePadLanguage(rawLanguage)
-    var body: [String: Any] = [:]
+    var body: [String: Any]
+    do {
+        body = try padControlBody(arguments, creating: false)
+    } catch {
+        return errorResult(error.message)
+    }
     if let title {
         body["title"] = title
     }
@@ -692,7 +702,7 @@ func updatePad(id: String, arguments: [String: Value]?, account: MCPAccount) asy
         body["language"] = language
     }
     guard !body.isEmpty else {
-        return missingArgument("at least one of title / notes / owner_email / language")
+        return missingArgument("at least one pad field or control")
     }
 
     if strictDryRunArgument(arguments) == .value(true) {
