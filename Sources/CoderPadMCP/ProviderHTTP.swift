@@ -158,6 +158,7 @@ func screenGet(_ path: String, account: MCPAccount, query: [URLQueryItem] = []) 
     let items = query.filter { ($0.value ?? "").isEmpty == false }
     if !items.isEmpty {
         comps.queryItems = items
+        comps.percentEncodedQuery = comps.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
     }
     guard let url = comps.url else {
         return transportFailureResponse(.invalidURL)

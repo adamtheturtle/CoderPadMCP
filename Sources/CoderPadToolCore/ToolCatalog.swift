@@ -316,7 +316,8 @@ public nonisolated(unsafe) let coderPadScreenToolDescriptors: [[String: Any]] =
             ]),
             required: ["test"],
         ),
-    ] + coderPadScreenAIToolDescriptors + screenCampaignWriteDescriptors + screenProjectArchiveDescriptors
+    ] + coderPadScreenAIToolDescriptors + screenCampaignWriteDescriptors + screenProjectArchiveDescriptors +
+    coderPadScreenQuestionReadDescriptors
 
 /// Write tools (create/edit), advertised only when writes are opted in. There is no
 /// delete tool by design (#502): deletion stays a human action in the app.
@@ -451,7 +452,7 @@ public let coderPadWriteToolNames: Set<String> = [
 /// The names of the Screen tools, advertised only when Screen is configured.
 public let coderPadScreenToolNames: Set<String> = [
     "screen_list_campaigns", "screen_list_tests", "screen_get_test", "screen_ai_assist_conversations", "screen_create_campaign",
-    "screen_project_archive",
+    "screen_project_archive", "screen_list_questions", "screen_get_question", "screen_question_insights",
 ]
 
 /// The full catalog to advertise: Screen tools appear only when Screen is configured, and

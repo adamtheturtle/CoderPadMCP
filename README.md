@@ -176,3 +176,10 @@ Read the linked resource to download binary content as an MCP blob.
 Resources use the selected account's Screen key, an 8 MiB ceiling, and a 120-second request timeout, with normal cancellation and API errors.
 The server does not extract or execute archive files.
 Archive reads require Screen access and are available without enabling writes.
+
+Screen question discovery uses `screen_list_questions`, `screen_get_question`, and `screen_question_insights`.
+Question identities are UUIDs.
+Lists expose offset pagination with a maximum page size of 50 and filters for type, duration, difficulty, domain, skill, programming language, origin, product, and sort order.
+Insights accept an optional programming language.
+Responses retain full question and evaluation data, optional metrics, explicit zero and false values, and pagination metadata.
+These tools require Screen credentials on the selected account and return bounded JSON.

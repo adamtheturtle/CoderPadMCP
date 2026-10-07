@@ -29,6 +29,9 @@ func dispatchScreenOrWrite(
     case "screen_project_archive":
         return screenProjectArchiveLink(arguments, account: account)
 
+    case "screen_list_questions", "screen_get_question", "screen_question_insights":
+        return try await dispatchScreenQuestionRead(name: name, arguments: arguments, account: account)
+
     case "screen_list_campaigns":
         if let error = unknownArgumentError(arguments, allowed: [mcpAccountArgument]) {
             return errorResult(error)
