@@ -344,7 +344,7 @@ public struct CoderPadProvider: MCPToolProvider {
 
 /// The names of the write tools, gated on the writes opt-in. Kept as one set so the
 /// `tools/list` filter and the call gate can't drift apart.
-let writeToolNames: Set<String> = ["create_pad", "update_pad", "create_question", "update_question"]
+let writeToolNames = coderPadWriteToolNames
 
 /// Runs one account-scoped tool against the resolved account.
 private func dispatch(
@@ -359,6 +359,9 @@ private func dispatch(
     }
 
     switch name {
+    case "list_question_variants", "get_question_variant", "create_question_variant", "update_question_variant":
+        return try await dispatchQuestionVariant(name: name, arguments: arguments, account: account, cache: cache)
+
     case "whoami":
         return try await whoami(account: account, writesEnabled: writesEnabled)
 
@@ -618,7 +621,7 @@ private func readCoderPadResource(
 
 // MARK: - Write tools (#502, gated behind the writes opt-in)
 
-private func dryRunResult(method: String, path: String, body: [String: Any]) -> CallTool.Result {
+func dryRunResult(method: String, path: String, body: [String: Any]) -> CallTool.Result {
     jsonResult(["dry_run": true, "changed": false, "method": method, "path": path, "body": body])
 }
 

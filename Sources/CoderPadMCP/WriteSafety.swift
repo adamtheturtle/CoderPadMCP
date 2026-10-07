@@ -120,8 +120,10 @@ public func integerArgumentNames(forTool name: String) -> [String] {
         ["page"]
     case "get_pad_code":
         ["max_file_chars"]
-    case "get_question", "update_question":
+    case "get_question", "update_question", "list_question_variants", "create_question_variant":
         ["question"]
+    case "get_question_variant", "update_question_variant":
+        ["question", "variant"]
     case "screen_list_tests":
         ["campaignId", "start", "limit"]
     case "screen_get_test":

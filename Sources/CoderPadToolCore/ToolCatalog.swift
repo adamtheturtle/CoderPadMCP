@@ -104,7 +104,7 @@ public func mcpDateBoundDescription(bound: String) -> String {
 }
 
 /// Adds the `account` selector to a property set.
-private func withAccount(_ properties: [String: [String: Any]] = [:]) -> [String: [String: Any]] {
+func withAccount(_ properties: [String: [String: Any]] = [:]) -> [String: [String: Any]] {
     properties.merging([mcpAccountArgument: mcpAccountSchema]) { _, new in new }
 }
 
@@ -157,7 +157,7 @@ private nonisolated(unsafe) let pagingProperties: [String: [String: Any]] =
 /// Standard MCP annotations for a write tool: not read-only; touches an external system
 /// (open-world); `destructiveHint` set for edits that overwrite existing content so
 /// clients can warn more strongly than for a plain create.
-private func writeAnnotations(title: String, destructive: Bool) -> [String: Any] {
+func writeAnnotations(title: String, destructive: Bool) -> [String: Any] {
     ["title": title, "readOnlyHint": false, "destructiveHint": destructive, "openWorldHint": true]
 }
 
@@ -270,7 +270,7 @@ public nonisolated(unsafe) let coderPadReadToolDescriptors: [[String: Any]] =
             "Get the organization's teams and members.",
             properties: withAccount(),
         ),
-    ]
+    ] + coderPadVariantReadToolDescriptors
 
 /// CoderPad Screen (assessments) tools, offered only when a Screen key is set.
 public nonisolated(unsafe) let coderPadScreenToolDescriptors: [[String: Any]] =
@@ -439,12 +439,13 @@ public nonisolated(unsafe) let coderPadWriteToolDescriptors: [[String: Any]] =
             schemaExtras: ["additionalProperties": false],
             annotations: writeAnnotations(title: "Update question", destructive: true),
         ),
-    ]
+    ] + coderPadVariantWriteToolDescriptors
 
 /// The names of the write tools, gated on the writes opt-in. One set so the `tools/list`
 /// filter and the call gate can't drift apart.
 public let coderPadWriteToolNames: Set<String> = [
     "create_pad", "update_pad", "create_question", "update_question",
+    "create_question_variant", "update_question_variant",
 ]
 
 /// The names of the Screen tools, advertised only when Screen is configured.
@@ -470,9 +471,10 @@ public func coderPadToolDescriptors(
         result += screen
     }
     if writesEnabled {
+        let descriptors = coderPadWriteToolDescriptors
         let writes = requireAccountForWrites
-            ? coderPadWriteToolDescriptors.map(requiringAccountArgument)
-            : coderPadWriteToolDescriptors
+            ? descriptors.map(requiringAccountArgument)
+            : descriptors
         result += writes
     }
     return result
