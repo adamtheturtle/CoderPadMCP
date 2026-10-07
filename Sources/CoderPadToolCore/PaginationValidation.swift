@@ -14,7 +14,7 @@
 public let maxPaginationPage = 100_000
 public let maxPaginationStart = 10_000_000
 /// Matches `CoderPadKit.ScreenClient.maximumPageSize` for Screen list requests.
-public let maxPaginationLimit = 500
+public let maxPaginationLimit = 50
 
 /// Sort fields documented for Interview pad and question list endpoints.
 public let pagingSortFields: Set<String> = ["created_at", "updated_at"]
