@@ -154,36 +154,20 @@ private func screenGetTest(
     arguments: [String: Value]?,
     account: MCPAccount,
 ) async throws -> CallTool.Result {
-    if let error = unknownArgumentError(arguments, allowed: [mcpAccountArgument, "test"]) {
+    if let error = unknownArgumentError(arguments, allowed: [mcpAccountArgument, "test", "withCommunityStats"]) {
         return errorResult(error)
     }
     guard let test = positiveScreenID(strictIntArgument(arguments, "test")) else {
         return errorResult("test must be a positive int32.")
     }
-
-    let statusResponse = try await screenGet("/tests/\(test)", account: account)
-    guard statusResponse.ok, isValidJSONObjectOrArray(statusResponse.data) else {
-        return toolResult(statusResponse)
+    var query: [URLQueryItem] = []
+    if let value = arguments?["withCommunityStats"] {
+        guard case let .bool(enabled) = value else {
+            return errorResult("withCommunityStats must be a boolean.")
+        }
+        query.append(URLQueryItem(name: "withCommunityStats", value: enabled ? "true" : "false"))
     }
-    if let message = apiErrorEnvelopeMessage(in: statusResponse.data) {
-        return errorResult(message)
-    }
-    let reportResponse = try await screenGet("/tests/\(test)/report", account: account)
-    guard var object = jsonObject(statusResponse.data) else {
-        return toolResult(statusResponse)
-    }
-    if reportResponse.ok, let report = jsonObject(reportResponse.data) {
-        object["report"] = report
-    } else if reportResponse.ok, isValidJSONObjectOrArray(reportResponse.data),
-              let reportValue = try? JSONSerialization.jsonObject(with: reportResponse.data)
-    {
-        object["report"] = reportValue
-    } else if reportResponse.status != 404 {
-        object["report_error"] = reportResponse.status == 0
-            ? "Transport failure: \(reportResponse.body)"
-            : sanitizedHTTPErrorMessage(status: reportResponse.status, body: reportResponse.body)
-    }
-    return jsonResult(object)
+    return try await toolResult(screenGet("/tests/\(test)", account: account, query: query))
 }
 
 private func screenTestQuery(_ arguments: [String: Value]?, candidateEmail: String?) -> [URLQueryItem] {

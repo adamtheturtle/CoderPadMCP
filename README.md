@@ -136,3 +136,8 @@ Internal pad scans follow both page and opaque cursor continuations.
 Requests keep the selected account’s configured API origin and credentials.
 Continuation URLs supply only a page or cursor value.
 Cycles and incomplete scans are reported as errors rather than complete counts or aggregates.
+
+`screen_get_test` returns the JSON test details and their existing report and UUID question results.
+Set `withCommunityStats` to include community statistics.
+This tool makes one JSON request.
+It does not fetch the PDF export or candidate media.

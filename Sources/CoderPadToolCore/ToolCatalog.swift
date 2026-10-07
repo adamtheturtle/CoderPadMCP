@@ -305,13 +305,14 @@ public nonisolated(unsafe) let coderPadScreenToolDescriptors: [[String: Any]] =
         ),
         mcpToolDescriptor(
             "screen_get_test",
-            "Get a single Screen test session by its numeric id, including its report when available.",
+            "Get JSON Screen test details, including available reports and UUID question results. Candidate media is not downloaded.",
             properties: withAccount([
                 "test": mcpIntSchema(
                     "The session's numeric id.",
                     minimum: 1,
                     maximum: maximumScreenID,
                 ),
+                "withCommunityStats": mcpBoolSchema("Optional. Include community statistics in the JSON detail response."),
             ]),
             required: ["test"],
         ),
