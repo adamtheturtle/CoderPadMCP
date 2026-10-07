@@ -20,6 +20,9 @@ func dispatchScreenOrWrite(
     }
 
     switch name {
+    case "screen_ai_assist_conversations":
+        return try await screenAIConversations(arguments: arguments, account: account)
+
     case "screen_list_campaigns":
         if let error = unknownArgumentError(arguments, allowed: [mcpAccountArgument]) {
             return errorResult(error)

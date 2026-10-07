@@ -157,3 +157,10 @@ Code and file arrays are mutually exclusive.
 Each string is limited to 512 KiB and the complete write body to 1 MiB.
 Mutations are attempted once.
 Variant deletion remains a human action.
+
+`screen_ai_assist_conversations` reads candidate AI Assist conversations for an integer test ID and a UUID project-question ID.
+Conversation and message order, subjects, creation times, roles, and structured `output_items` remain intact.
+Empty conversation arrays remain valid.
+Missing questions and unfinished tests return HTTP errors.
+Responses exceeding the JSON response limit fail with `response_too_large`, without returning a partial transcript as a complete result.
+The tool is available only with Screen credentials and never fetches project archives or media.
