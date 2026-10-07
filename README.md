@@ -209,3 +209,9 @@ Question writes accept instruction steps with optional names and visibility, an 
 Instructions are encoded as a JSON string.
 Empty instruction arrays, empty prompts, and false sharing values are preserved.
 Dry runs preview the exact request, and permission or plan restrictions remain API errors.
+
+Question writes accept language keys or project template slugs and structured `file_contents` arrays.
+Files are sent as a JSON-encoded string under `question`, and cannot be combined with single-file `contents`.
+Creation overlays template files and supports path-only removal entries, with `.cpad` protected.
+Parent-question updates ignore removal entries.
+Omitted arrays and explicit empty arrays retain their different meanings.

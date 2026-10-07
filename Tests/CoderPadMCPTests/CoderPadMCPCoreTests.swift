@@ -395,7 +395,7 @@ struct ToolCatalogTests {
         #expect(try property("title", of: "update_pad")["maxLength"] as? Int == maxPadTitleCharacters)
         #expect(try property("language", of: "create_pad")["enum"] as? [String] == creatablePadLanguages)
         #expect(try property("language", of: "update_pad")["enum"] as? [String] == creatablePadLanguages)
-        #expect(try property("language", of: "create_question")["enum"] as? [String] == creatablePadLanguages)
+        #expect(try property("language", of: "create_question")["enum"] == nil)
         #expect(try property("contents", of: "create_pad")["maxLength"] == nil)
         #expect(try property("description", of: "create_question")["maxLength"] == nil)
         #expect(
