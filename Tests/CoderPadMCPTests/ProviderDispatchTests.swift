@@ -92,6 +92,9 @@ struct ProviderDispatchTests {
     @Test
     func `whoami ignores irrelevant integer-named arguments`() async throws {
         let provider = try provider { _, path, _, _, _, _ in
+            if path == "/api/user" {
+                return APIResponse(status: 200, body: #"{"name":null,"allow_pad_creation":false,"analytics_id":"owner"}"#)
+            }
             #expect(path == "/api/organization")
             return APIResponse(status: 200, body: #"{"organization_name":"Acme Org"}"#)
         }

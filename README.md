@@ -193,3 +193,9 @@ Embedding hosts can supply `CoderPadMCPArchiveInput` to resolve binary resource 
 Upload dry runs read and validate the selected archive and preview its headers.
 Reference the returned temporary file UUID promptly when creating a PROJECT question.
 Existing project source archives are replaced in the question editor.
+
+
+`whoami` distinguishes the configured account label from the API-derived `interview_user` display name, pad-creation capability, and analytics identifier.
+When Screen credentials are configured, `screen_identity` includes organization, recruiter, and team identities with default-team flags.
+Identity lookup failures are returned as tool errors.
+Display names and analytics identifiers do not establish user email addresses or organization roles.
