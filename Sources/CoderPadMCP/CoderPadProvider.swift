@@ -716,13 +716,22 @@ func createQuestion(
     arguments: [String: Value]?,
     account: MCPAccount,
 ) async throws -> CallTool.Result {
-    let rawLanguage = optionalString(arguments, "language")
-    if let error = createPadLanguageValidationError(rawLanguage) {
-        return errorResult(error)
+    let language: String?
+    do {
+        language = try questionProjectLanguage(arguments)
+    } catch {
+        return errorResult(error.message)
     }
     var question: [String: Any] = ["title": title]
-    if let language = validatedCreatePadLanguage(rawLanguage) {
+    if let language {
         question["language"] = language
+    }
+    do {
+        if let files = try questionFilesJSONString(arguments) {
+            question["file_contents"] = files
+        }
+    } catch {
+        return errorResult(error.message)
     }
     var body: [String: Any]
     do {
@@ -759,16 +768,25 @@ func updateQuestion(
     if let error = questionTitleValidationError(title) {
         return errorResult(error)
     }
-    let rawLanguage = presentWriteString(arguments, "language")
-    if let error = createPadLanguageValidationError(rawLanguage) {
-        return errorResult(error)
+    let language: String?
+    do {
+        language = try questionProjectLanguage(arguments)
+    } catch {
+        return errorResult(error.message)
     }
     var question: [String: Any] = [:]
     if let title {
         question["title"] = title
     }
-    if let language = validatedCreatePadLanguage(rawLanguage) {
+    if let language {
         question["language"] = language
+    }
+    do {
+        if let files = try questionFilesJSONString(arguments) {
+            question["file_contents"] = files
+        }
+    } catch {
+        return errorResult(error.message)
     }
     var body: [String: Any]
     do {

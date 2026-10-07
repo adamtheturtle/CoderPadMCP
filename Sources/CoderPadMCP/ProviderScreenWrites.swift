@@ -106,11 +106,11 @@ private func writeArgumentValidationError(name: String, arguments: [String: Valu
         ],
         "create_question": [
             mcpAccountArgument, "title", "language", "description", "solution", "contents", "dry_run",
-            "candidate_instructions", "ai_assist_custom_system_prompt", "shared", "custom_database_id",
+            "candidate_instructions", "ai_assist_custom_system_prompt", "shared", "custom_database_id", "file_contents",
         ],
         "update_question": [
             mcpAccountArgument, "question", "title", "language", "description", "solution",
-            "contents", "dry_run", "candidate_instructions", "ai_assist_custom_system_prompt", "shared", "custom_database_id",
+            "contents", "dry_run", "candidate_instructions", "ai_assist_custom_system_prompt", "shared", "custom_database_id", "file_contents",
         ],
     ]
     let budgetedWriteFields = [

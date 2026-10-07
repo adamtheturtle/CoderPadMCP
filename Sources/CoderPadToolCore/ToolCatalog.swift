@@ -409,9 +409,9 @@ public nonisolated(unsafe) let coderPadWriteToolDescriptors: [[String: Any]] =
                         + "At most \(maxMCPWriteFieldBytes) UTF-8 bytes.",
                 ),
                 "dry_run": mcpBoolSchema("Validate and preview the request without creating anything."),
-            ].merging(questionSettingProperties) { _, new in new }),
+            ].merging(questionSettingProperties) { _, new in new }.merging(questionProjectProperties) { _, new in new }),
             required: ["title"],
-            schemaExtras: ["additionalProperties": false],
+            schemaExtras: ["additionalProperties": false, "not": ["required": ["contents", "file_contents"]]],
             annotations: writeAnnotations(title: "Create question", destructive: false),
         ),
         mcpToolDescriptor(
@@ -435,9 +435,9 @@ public nonisolated(unsafe) let coderPadWriteToolDescriptors: [[String: Any]] =
                     "New starter code. At most \(maxMCPWriteFieldBytes) UTF-8 bytes.",
                 ),
                 "dry_run": mcpBoolSchema("Validate and preview the request without changing the question."),
-            ].merging(questionSettingProperties) { _, new in new }),
+            ].merging(questionSettingProperties) { _, new in new }.merging(questionProjectProperties) { _, new in new }),
             required: ["question"],
-            schemaExtras: ["additionalProperties": false],
+            schemaExtras: ["additionalProperties": false, "not": ["required": ["contents", "file_contents"]]],
             annotations: writeAnnotations(title: "Update question", destructive: true),
         ),
     ] + coderPadVariantWriteToolDescriptors
