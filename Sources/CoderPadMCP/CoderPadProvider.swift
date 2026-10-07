@@ -206,6 +206,7 @@ public struct CoderPadProvider: MCPToolProvider {
             writesEnabled: writesEnabled,
             requireAccountForScreen: screenEnabled && !accountSet.defaultScreenEnabled,
             requireAccountForWrites: writesEnabled && !accountSet.defaultWritesEnabled,
+            screenWritesEnabled: accountSet.accounts.contains { $0.screenEnabled && accountSet.allowsWrites(to: $0) },
         )
     }
 

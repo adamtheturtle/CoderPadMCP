@@ -164,3 +164,9 @@ Empty conversation arrays remain valid.
 Missing questions and unfinished tests return HTTP errors.
 Responses exceeding the JSON response limit fail with `response_too_large`, without returning a partial transcript as a complete result.
 The tool is available only with Screen credentials and never fetches project archives or media.
+
+`screen_create_campaign` creates a campaign from ordered question UUIDs or random sets and optional team settings.
+The selected account must have both a Screen key and write permission.
+Omitted settings keep team defaults, and explicit false values and empty lists are preserved.
+Dry runs preview the validated request without creating a campaign or returning an invented ID.
+Creation uses one bounded POST and is never automatically retried.
