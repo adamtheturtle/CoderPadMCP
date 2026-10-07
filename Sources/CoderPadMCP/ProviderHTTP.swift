@@ -39,8 +39,13 @@ let liveInterviewRequest: InterviewRequest = { method, path, account, query, bod
     return APIResponse(status: response.status, data: response.data)
 }
 
+typealias ScreenResponseRequest = @Sendable (URLRequest, Int) async throws -> (Data, URLResponse)
+
 enum ProviderRequestContext {
     @TaskLocal static var interviewRequest = liveInterviewRequest
+    @TaskLocal static var screenResponse: ScreenResponseRequest = {
+        try await boundedResponseData(for: $0, limit: $1)
+    }
 }
 
 /// Locally synthesized transport failures use status 0 with a safe category token in the
@@ -162,10 +167,7 @@ func screenGet(_ path: String, account: MCPAccount, query: [URLQueryItem] = []) 
     request.setValue(key, forHTTPHeaderField: "API-Key")
     request.setValue("application/json", forHTTPHeaderField: "Accept")
     do {
-        let (data, response) = try await boundedResponseData(
-            for: request,
-            limit: screenReadResponseLimit,
-        )
+        let (data, response) = try await ProviderRequestContext.screenResponse(request, screenReadResponseLimit)
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         return APIResponse(status: status, data: data)
     } catch is CancellationError {
