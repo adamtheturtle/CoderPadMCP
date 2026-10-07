@@ -172,16 +172,19 @@ public struct CoderPadProvider: MCPToolProvider {
     private let cache: CoderPadMCPCache?
     private let activity: (@Sendable (CoderPadMCPActivity) -> Void)?
     private let interviewRequest: InterviewRequest
+    private let archiveInput: CoderPadMCPArchiveInput
 
     public init(
         accountSet: MCPAccountSet,
         cache: CoderPadMCPCache? = nil,
         activity: (@Sendable (CoderPadMCPActivity) -> Void)? = nil,
+        archiveInput: CoderPadMCPArchiveInput? = nil,
     ) {
         self.init(
             accountSet: accountSet,
             cache: cache,
             activity: activity,
+            archiveInput: archiveInput,
             interviewRequest: liveInterviewRequest,
         )
     }
@@ -190,12 +193,14 @@ public struct CoderPadProvider: MCPToolProvider {
         accountSet: MCPAccountSet,
         cache: CoderPadMCPCache? = nil,
         activity: (@Sendable (CoderPadMCPActivity) -> Void)? = nil,
+        archiveInput: CoderPadMCPArchiveInput? = nil,
         interviewRequest: @escaping InterviewRequest,
     ) {
         self.accountSet = accountSet
         self.cache = cache
         self.activity = activity
         self.interviewRequest = interviewRequest
+        self.archiveInput = archiveInput ?? fileArchiveInput
     }
 
     public func tools() async -> [Tool] {
@@ -265,13 +270,15 @@ public struct CoderPadProvider: MCPToolProvider {
 
         try Task.checkCancellation()
         let result = try await ProviderRequestContext.$interviewRequest.withValue(interviewRequest) {
-            try await dispatch(
-                name: name,
-                arguments: arguments,
-                account: account,
-                writesEnabled: accountSet.allowsWrites(to: account),
-                cache: cache,
-            )
+            try await ProviderRequestContext.$archiveInput.withValue(archiveInput) {
+                try await dispatch(
+                    name: name,
+                    arguments: arguments,
+                    account: account,
+                    writesEnabled: accountSet.allowsWrites(to: account),
+                    cache: cache,
+                )
+            }
         }
         record(name: name, account: account, result: result)
         return result
