@@ -175,9 +175,9 @@ public nonisolated(unsafe) let coderPadReadToolDescriptors: [[String: Any]] =
         ),
         mcpToolDescriptor(
             "whoami",
-            "Report which CoderPad account this server is acting as: the account name, the organization "
-                + "name, and the server base URL. Never returns the API key. Use this to confirm identity "
-                + "before answering organization-wide questions.",
+            "Report the configured account label and API-derived Interview key owner and organization. "
+                + "Includes Screen recruiter, organization and teams when configured. API keys are never returned. "
+                + "Display names and analytics identifiers do not establish email addresses or organization roles.",
             properties: withAccount(),
         ),
         mcpToolDescriptor(

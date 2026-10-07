@@ -470,34 +470,6 @@ private func dispatch(
     }
 }
 
-// MARK: - whoami (#518)
-
-/// Reports which account/org this server acts as, without the API key: the account
-/// name, the org name (fetched from `/api/organization`), the base URL, and whether
-/// Screen and writes are enabled. Organization lookup failures propagate as tool
-/// errors so a bad key is not reported as a successful identity (#145).
-private func whoami(account: MCPAccount, writesEnabled: Bool) async throws -> CallTool.Result {
-    let org = try await apiGet("/api/organization", account: account)
-    guard org.ok else { return toolResult(org) }
-    guard let object = jsonObject(org.data) else {
-        return errorResult("CoderPad returned an invalid JSON organization response.")
-    }
-    guard let organizationName = object["organization_name"] as? String,
-          !organizationName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    else {
-        return errorResult("Organization response did not include organization_name.")
-    }
-
-    return jsonResult([
-        "account": account.name,
-        "account_id": account.id,
-        "organization_name": organizationName,
-        "base_url": account.baseURL.absoluteString,
-        "screen_configured": account.screenEnabled,
-        "writes_enabled": writesEnabled,
-    ])
-}
-
 // MARK: - get_pad_code (#499)
 
 /// Fetches the pad and each of its environments and assembles the compact code JSON
