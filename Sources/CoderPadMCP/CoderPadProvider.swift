@@ -724,7 +724,13 @@ func createQuestion(
     if let language = validatedCreatePadLanguage(rawLanguage) {
         question["language"] = language
     }
-    var body: [String: Any] = ["question": question]
+    var body: [String: Any]
+    do {
+        body = try questionSettingBody(arguments)
+    } catch {
+        return errorResult(error.message)
+    }
+    body["question"] = question
     if let description = presentWriteString(arguments, "description") {
         body["description"] = description
     }
@@ -735,6 +741,9 @@ func createQuestion(
         body["contents"] = contents
     }
 
+    if let error = questionWriteBodySizeError(body) {
+        return errorResult(error)
+    }
     if strictDryRunArgument(arguments) == .value(true) {
         return dryRunResult(method: "POST", path: "/api/questions/", body: body)
     }
@@ -761,7 +770,12 @@ func updateQuestion(
     if let language = validatedCreatePadLanguage(rawLanguage) {
         question["language"] = language
     }
-    var body: [String: Any] = [:]
+    var body: [String: Any]
+    do {
+        body = try questionSettingBody(arguments)
+    } catch {
+        return errorResult(error.message)
+    }
     if !question.isEmpty {
         body["question"] = question
     }
@@ -775,9 +789,12 @@ func updateQuestion(
         body["contents"] = contents
     }
     guard !body.isEmpty else {
-        return missingArgument("at least one of title / language / description / solution / contents")
+        return missingArgument("at least one question field or setting")
     }
 
+    if let error = questionWriteBodySizeError(body) {
+        return errorResult(error)
+    }
     if strictDryRunArgument(arguments) == .value(true) {
         return dryRunResult(method: "PUT", path: "/api/questions/\(id)", body: body)
     }
