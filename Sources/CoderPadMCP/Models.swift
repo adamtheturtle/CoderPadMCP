@@ -18,12 +18,16 @@ import Foundation
 public struct APIResponse: Sendable {
     public let status: Int
 
+    /// Optional creation endpoint location. Never followed automatically.
+    public let location: String?
+
     /// The raw response bytes. Kept rather than eagerly stringified so JSON callers can
     /// parse them directly instead of paying a Data -> String -> Data round-trip on every
     /// parsed call — which the count/aggregate tools make once per page (#2120).
     public let data: Data
 
-    public init(status: Int, data: Data) {
+    public init(status: Int, data: Data, location: String? = nil) {
+        self.location = location
         self.status = status
         self.data = data
     }

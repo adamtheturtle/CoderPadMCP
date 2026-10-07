@@ -14,13 +14,14 @@ func screenSend(_ method: String, path: String, account: MCPAccount, data: Data,
     var request = URLRequest(url: url)
     request.httpMethod = method
     request.httpBody = data
+    request.setValue(String(data.count), forHTTPHeaderField: "Content-Length")
     request.setValue(key, forHTTPHeaderField: "API-Key")
     request.setValue("application/json", forHTTPHeaderField: "Accept")
     request.setValue(contentType, forHTTPHeaderField: "Content-Type")
     do {
         let (responseData, response) = try await ProviderRequestContext.screenResponse(request, 1024 * 1024)
         guard let response = response as? HTTPURLResponse else { return transportFailureResponse(.requestFailed) }
-        return APIResponse(status: response.statusCode, data: responseData)
+        return APIResponse(status: response.statusCode, data: responseData, location: response.value(forHTTPHeaderField: "Location"))
     } catch is CancellationError {
         throw CancellationError()
     } catch {

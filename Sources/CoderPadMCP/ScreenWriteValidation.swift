@@ -12,21 +12,7 @@ func screenWriteValue(_ value: Value, schema: [String: Any], path: String,
     guard budget <= maxMCPWriteBodyBytes else { throw ScreenWriteInputError(message: "The Screen write body exceeds its byte limit.") }
     switch schema["type"] as? String {
     case "object":
-        guard case let .object(fields) = value, let properties = schema["properties"] as? [String: [String: Any]],
-              Set(fields.keys).isSubset(of: Set(properties.keys))
-        else {
-            throw ScreenWriteInputError(message: "\(path) must be an object containing only its declared fields.")
-        }
-        for key in schema["required"] as? [String] ?? [] where fields[key] == nil {
-            throw ScreenWriteInputError(message: "\(path).\(key) is required.")
-        }
-        var object: [String: Any] = [:]
-        for key in fields.keys.sorted() {
-            guard let field = fields[key], let property = properties[key] else { continue }
-            budget += key.utf8.count + 4
-            object[key] = try screenWriteValue(field, schema: property, path: path + "." + key, budget: &budget)
-        }
-        return object
+        return try screenWriteObject(value, schema: schema, path: path, budget: &budget)
     case "array":
         guard case let .array(values) = value, let items = schema["items"] as? [String: Any],
               values.count >= (schema["minItems"] as? Int ?? 0), values.count <= (schema["maxItems"] as? Int ?? 200)

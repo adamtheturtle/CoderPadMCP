@@ -183,3 +183,13 @@ Lists expose offset pagination with a maximum page size of 50 and filters for ty
 Insights accept an optional programming language.
 Responses retain full question and evaluation data, optional metrics, explicit zero and false values, and pagination metadata.
 These tools require Screen credentials on the selected account and return bounded JSON.
+
+Screen question authoring tools require both a Screen key and writes opt-in on the selected account.
+`screen_create_question` and `screen_update_question` accept writable fields in `payload` for MCQ, CODE, TEXT, FILE_UPLOAD, VIDEO, and PROJECT questions.
+Creation returns the question details and optional Location header without following that URL.
+Use `screen_upload_project` with an explicit `archive_uri` to upload original gzip bytes, up to 52,428,800 bytes.
+The default loader accepts absolute file URIs.
+Embedding hosts can supply `CoderPadMCPArchiveInput` to resolve binary resource URIs.
+Upload dry runs read and validate the selected archive and preview its headers.
+Reference the returned temporary file UUID promptly when creating a PROJECT question.
+Existing project source archives are replaced in the question editor.

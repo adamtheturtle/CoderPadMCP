@@ -42,6 +42,7 @@ let liveInterviewRequest: InterviewRequest = { method, path, account, query, bod
 typealias ScreenResponseRequest = @Sendable (URLRequest, Int) async throws -> (Data, URLResponse)
 
 enum ProviderRequestContext {
+    @TaskLocal static var archiveInput: CoderPadMCPArchiveInput = fileArchiveInput
     @TaskLocal static var interviewRequest = liveInterviewRequest
     @TaskLocal static var screenResponse: ScreenResponseRequest = {
         try await boundedResponseData(for: $0, limit: $1)

@@ -23,6 +23,12 @@ func dispatchScreenOrWrite(
     case "screen_ai_assist_conversations":
         return try await screenAIConversations(arguments: arguments, account: account)
 
+    case "screen_create_question", "screen_update_question":
+        return try await screenSaveQuestion(arguments, account: account, update: name == "screen_update_question")
+
+    case "screen_upload_project":
+        return try await screenUploadProject(arguments, account: account)
+
     case "screen_create_campaign":
         return try await screenCreateCampaign(arguments, account: account)
 
