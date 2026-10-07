@@ -47,6 +47,18 @@ jobs:
         run: swift build --build-tests
       - name: Test
         run: swift test
+      - name: Build and smoke-test static Linux executable
+        shell: bash
+        run: |
+          set -euo pipefail
+          # SwiftBuild's static Foundation fix is not in the Swift 6.4 toolchain.
+          # https://github.com/swiftlang/swift-build/issues/1764
+          swift build -c release --build-system native --static-swift-stdlib
+          binary="$(swift build -c release --build-system native --static-swift-stdlib --show-bin-path)/coderpad-mcp"
+          startup_status=0
+          "$binary" </dev/null >startup.stdout 2>startup.stderr || startup_status=$?
+          test "$startup_status" -eq 1
+          grep -Fq 'coderpad-mcp: no accounts configured.' startup.stderr
 
   prose:
     name: Vale
