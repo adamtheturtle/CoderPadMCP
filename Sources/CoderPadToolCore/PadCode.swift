@@ -188,7 +188,7 @@ public func parsePadEnvironmentIDs(in pad: [String: Any]) -> PadEnvironmentIDPar
 
 func environmentID(from value: Any) -> Int? {
     // JSON booleans bridge to NSNumber and would pass an `as? Int` cast as 0/1.
-    if value is Bool {
+    if isJSONBoolean(value) {
         return nil
     }
     let id: Int? = switch value {

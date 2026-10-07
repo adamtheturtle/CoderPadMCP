@@ -346,13 +346,13 @@ struct ProviderDispatchTests {
         let task = Task {
             try await provider.callTool("get_pad_code", arguments: ["pad": .string("abc")])
         }
-        try await probe.waitUntilStarted(1)
+        try await probe.waitUntilStarted(2)
         task.cancel()
 
         await #expect(throws: CancellationError.self) {
             try await task.value
         }
-        #expect(await probe.cancellations() == 1)
+        #expect(await probe.cancellations() == 2)
     }
 
     @Test

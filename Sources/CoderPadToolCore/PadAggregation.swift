@@ -8,6 +8,7 @@
 //  through the model.
 //
 
+import CoreFoundation
 import Foundation
 
 public let maxPaginationTokenBytes = 256
@@ -49,7 +50,7 @@ public func nextPageContinuation(_ value: Any?) -> NextPageContinuation {
     if value == nil || value is NSNull {
         return .finished
     }
-    if value is Bool {
+    if isJSONBoolean(value) {
         return .malformed
     }
     switch value {
@@ -155,8 +156,8 @@ public struct RecordIdentityTracker: Sendable {
         // JSON true/false bridge to Int under Foundation; reject Bool before numeric
         // identity so a boolean id cannot collide with the real record whose id is 1
         // (#170, #171).
-        // `is Bool` also matches boolean NSNumbers on Apple platforms.
-        if question["id"] is Bool {
+        // Check the actual JSON boolean type so numeric 0 and 1 remain valid.
+        if isJSONBoolean(question["id"]) {
             return .invalid
         }
         let identity: String? = if let value = question["id"] as? Int, value > 0 {
@@ -175,7 +176,7 @@ public struct RecordIdentityTracker: Sendable {
     }
 
     private func stableIdentity(_ raw: Any?) -> String? {
-        if raw is Bool {
+        if isJSONBoolean(raw) {
             return nil
         }
         if let value = validatedPadID(raw as? String) {
@@ -770,14 +771,14 @@ public func compactPads(_ pads: [[String: Any]]) -> [[String: Any]] {
 
 /// Bounded scalar pagination metadata for compact list tools.
 public func compactPaginationMetadata(_ value: Any?) -> Any? {
-    if value is Bool || value is NSNull {
+    if isJSONBoolean(value) || value is NSNull {
         return nil
     }
     if let string = value as? String {
         return compactScalar(string)
     }
     if let number = value as? NSNumber {
-        if isBooleanNSNumber(number) {
+        if isJSONBoolean(number) {
             return nil
         }
         let doubleValue = number.doubleValue
@@ -791,12 +792,11 @@ public func compactPaginationMetadata(_ value: Any?) -> Any? {
     return nil
 }
 
-private func isBooleanNSNumber(_ number: NSNumber) -> Bool {
-    #if canImport(CoreFoundation) && !os(Linux)
-        CFGetTypeID(number) == CFBooleanGetTypeID()
-    #else
-        false
-    #endif
+/// Distinguishes JSON booleans from numeric NSNumber values, including 0 and 1.
+public func isJSONBoolean(_ value: Any?) -> Bool {
+    guard let value else { return false }
+    guard let number = value as? NSNumber else { return false }
+    return CFGetTypeID(number) == CFBooleanGetTypeID()
 }
 
 /// The scalar (string/number/bool/null) form of a compact-row value, with strings

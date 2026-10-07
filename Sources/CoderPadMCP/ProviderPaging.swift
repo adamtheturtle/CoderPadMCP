@@ -143,7 +143,7 @@ private func finalizePadScan(_ scan: PadPageScan) -> PadPageScan {
 /// A non-negative whole total from a list response, or nil when missing/malformed so
 /// unfiltered counts can fall back to a full scan (#165, #166).
 private func reportedListTotal(_ value: Any?) -> Int? {
-    if value is Bool {
+    if isJSONBoolean(value) {
         return nil
     }
     if let number = value as? Int, number >= 0 {
