@@ -128,63 +128,45 @@ jobs:
           mkdir -p dist
           lipo -create "$arm_bin" "$x86_bin" -output dist/coderpad-mcp
           lipo -archs dist/coderpad-mcp
+      - name: Import the Developer ID certificate
+        id: signing_certificate
+        uses: Apple-Actions/import-codesign-certs@77ba2a2a8f5cfc8c405ebf3159f767c323e238f9  # v7.1.0
+        with:
+          p12-file-base64: ${{ secrets.DEVELOPER_ID_APP_CERT_P12_BASE64 }}
+          p12-password: ${{ secrets.DEVELOPER_ID_APP_CERT_PASSWORD }}
       - name: Sign, notarize, and package
         shell: bash
+        env:
+          IDENTITIES: ${{ steps.signing_certificate.outputs.identities }}
         run: |
           set -euo pipefail
           version="${RELEASE_TAG#v}"
           package_name="coderpad-mcp-${version}-macos-universal"
           package_dir="$RUNNER_TEMP/$package_name"
           archive_path="$GITHUB_WORKSPACE/dist/$package_name.zip"
-          certificate_path="$RUNNER_TEMP/developer-id.p12"
           asc_key_path="$RUNNER_TEMP/asc-api-key.p8"
-          keychain_path="$RUNNER_TEMP/release-signing.keychain-db"
-          keychain_password="$(openssl rand -hex 24)"
 
           cleanup() {
-            security delete-keychain "$keychain_path" >/dev/null 2>&1 || true
-            rm -f "$certificate_path" "$asc_key_path"
+            rm -f "$asc_key_path"
           }
           trap cleanup EXIT
 
           (
             umask 077
-            printf '%s' "$DEVELOPER_ID_APP_CERT_P12_BASE64" \
-              | base64 --decode > "$certificate_path"
             printf '%s' "$ASC_KEY" | base64 --decode > "$asc_key_path"
           )
-          security create-keychain -p "$keychain_password" "$keychain_path"
-          security set-keychain-settings -lut 21600 "$keychain_path"
-          security unlock-keychain -p "$keychain_password" "$keychain_path"
-          security list-keychains -d user -s "$keychain_path"
-          security import "$certificate_path" \
-            -P "$DEVELOPER_ID_APP_CERT_PASSWORD" \
-            -A \
-            -t cert \
-            -f pkcs12 \
-            -k "$keychain_path"
-          security set-key-partition-list \
-            -S apple-tool:,apple: \
-            -s \
-            -k "$keychain_password" \
-            "$keychain_path"
-          signing_identity="$(
-            security find-identity -v -p codesigning "$keychain_path" \
-              | grep 'Developer ID Application' \
-              | head -1 \
-              | sed -E 's/.*"(.*)".*/\1/'
-          )"
-          if [[ -z "$signing_identity" ]]; then
-            echo "::error::No Developer ID Application identity found in certificate."
-            exit 1
-          fi
+          signing_identity="$(jq -er '
+            [.[] | select(.name | startswith("Developer ID Application:"))]
+            | if length == 1 then .[0].hash
+              else error("Expected exactly one Developer ID Application identity; found \(length)")
+              end
+          ' <<< "$IDENTITIES")"
 
           codesign \
             --force \
             --options runtime \
             --timestamp \
             --sign "$signing_identity" \
-            --keychain "$keychain_path" \
             dist/coderpad-mcp
           codesign --verify --strict --verbose=2 dist/coderpad-mcp
 
