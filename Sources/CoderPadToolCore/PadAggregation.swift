@@ -62,7 +62,7 @@ public func nextPageContinuation(_ value: Any?) -> NextPageContinuation {
             let items = (components.queryItems ?? []).filter { $0.name == "page" || $0.name == "cursor" }
             guard items.count == 1,
                   let page = items[0].value?
-                  .trimmingCharacters(in: .whitespacesAndNewlines),
+                      .trimmingCharacters(in: .whitespacesAndNewlines),
                   !page.isEmpty,
                   let bounded = boundedPaginationToken(page)
             else {
@@ -349,8 +349,7 @@ public func withinDateRange(_ record: [String: Any], after: String?, before: Str
         .trimmingCharacters(in: .whitespacesAndNewlines)
     func passes(_ bound: String?, isAfter: Bool) -> Bool {
         guard let bound, !bound.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return true }
-        guard !created.isEmpty else { return false }
-        guard let dateBound = dateBound(from: bound) else { return false }
+        guard !created.isEmpty, let dateBound = dateBound(from: bound) else { return false }
 
         switch dateBound {
         case let .month(value), let .day(value):
@@ -794,8 +793,7 @@ public func compactPaginationMetadata(_ value: Any?) -> Any? {
 
 /// Distinguishes JSON booleans from numeric NSNumber values, including 0 and 1.
 public func isJSONBoolean(_ value: Any?) -> Bool {
-    guard let value else { return false }
-    guard let number = value as? NSNumber else { return false }
+    guard let value, let number = value as? NSNumber else { return false }
     return CFGetTypeID(number) == CFBooleanGetTypeID()
 }
 
