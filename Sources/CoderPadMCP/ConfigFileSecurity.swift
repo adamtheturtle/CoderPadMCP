@@ -60,10 +60,7 @@ func securelyReadConfig(
     guard status.st_uid == geteuid() else {
         throw MCPConfigLoadError.wrongOwner(path: path)
     }
-    guard status.st_mode & 0o077 == 0 else {
-        throw MCPConfigLoadError.insecurePermissions(path: path)
-    }
-    guard try !hasExtendedACL(descriptor: descriptor, path: path) else {
+    guard status.st_mode & 0o077 == 0, try !hasExtendedACL(descriptor: descriptor, path: path) else {
         throw MCPConfigLoadError.insecurePermissions(path: path)
     }
     guard status.st_size <= limit else {

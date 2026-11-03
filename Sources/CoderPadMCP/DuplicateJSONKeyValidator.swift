@@ -41,8 +41,7 @@ private struct DuplicateJSONKeyValidator {
     }
 
     private mutating func validateValue(depth: Int) throws {
-        guard depth <= 512 else { throw DuplicateJSONKeyError.malformedJSON }
-        guard let byte = currentByte else { throw DuplicateJSONKeyError.malformedJSON }
+        guard depth <= 512, let byte = currentByte else { throw DuplicateJSONKeyError.malformedJSON }
 
         switch byte {
         case ascii("{"):
