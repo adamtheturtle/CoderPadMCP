@@ -20,6 +20,9 @@ func dispatchScreenOrWrite(
     }
 
     switch name {
+    case "list_languages", "get_language":
+        return try await languageCatalogue(name: name, arguments: arguments, account: account)
+
     case "screen_ai_assist_conversations":
         return try await screenAIConversations(arguments: arguments, account: account)
 
@@ -96,7 +99,7 @@ func dispatchScreenOrWrite(
 private func writeArgumentValidationError(name: String, arguments: [String: Value]?) -> String? {
     let writeArgumentAllowlists: [String: Set<String>] = [
         "create_pad": [
-            mcpAccountArgument, "title", "language", "question_id", "contents", "owner_email",
+            mcpAccountArgument, "title", "language", "question_id", "contents", "file_contents", "owner_email",
             "notes", "team_id", "dry_run", "private", "execution_enabled", "restrict_interviewer_access",
             "allowed_interviewer_emails", "disable_coaching_tips", "take_home", "take_home_time_limit", "ai_assist_enabled",
         ],
@@ -206,4 +209,20 @@ private func screenTestQuery(_ arguments: [String: Value]?, candidateEmail: Stri
         query.append(URLQueryItem(name: "limit", value: String(limit)))
     }
     return query
+}
+
+private func languageCatalogue(name: String, arguments: [String: Value]?, account: MCPAccount) async throws -> CallTool.Result {
+    let allowed: Set<String> = name == "list_languages" ? [mcpAccountArgument] : [mcpAccountArgument, "language"]
+    if let error = unknownArgumentError(arguments, allowed: allowed) {
+        return errorResult(error)
+    }
+    if name == "list_languages" {
+        return try await toolResult(apiGet("/api/languages", account: account))
+    }
+    do {
+        guard let language = try questionProjectLanguage(arguments) else { return missingArgument("language") }
+        return try await toolResult(apiGet("/api/languages/\(language)", account: account))
+    } catch let error as QuestionProjectInputError {
+        return errorResult(error.message)
+    }
 }

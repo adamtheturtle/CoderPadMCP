@@ -412,7 +412,11 @@ struct ToolCatalogTests {
     func `create pad schema rejects conflicting seed sources`() throws {
         let schema = try inputSchema(of: "create_pad")
         let notSchema = try #require(schema["not"] as? [String: Any])
-        #expect(notSchema["required"] as? [String] == ["question_id", "contents"])
+        #expect((notSchema["anyOf"] as? [[String: [String]]]) == [
+            ["required": ["question_id", "contents"]],
+            ["required": ["question_id", "file_contents"]],
+            ["required": ["contents", "file_contents"]],
+        ])
     }
 
     @Test
