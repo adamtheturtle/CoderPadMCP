@@ -214,3 +214,10 @@ Files are sent as a JSON-encoded string under `question`, and cannot be combined
 Creation overlays template files and supports path-only removal entries, with `.cpad` protected.
 Parent-question updates ignore removal entries.
 Omitted arrays and explicit empty arrays retain their different meanings.
+
+### Environment discovery and project pads
+
+Use `list_languages` and `get_language` to inspect available environments and starter code before creating a pad.
+`create_pad` accepts project-template slugs such as `multifile_python` and structured `file_contents` overlays with hidden and deleted flags.
+Starter files, single-file contents, and a question ID are mutually exclusive.
+Use `dry_run: true` to preview a creation request without consuming pad quota.
