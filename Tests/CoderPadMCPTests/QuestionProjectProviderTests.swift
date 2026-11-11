@@ -111,7 +111,7 @@ struct QuestionProjectProviderTests {
             let root = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
             #expect(root["language"] as? String == "multifile_python")
             let files = try #require(root["file_contents"] as? String)
-            #expect((try JSONSerialization.jsonObject(with: Data(files.utf8)) as? NSArray)?.count == 2)
+            #expect(try (JSONSerialization.jsonObject(with: Data(files.utf8)) as? NSArray)?.count == 2)
             return APIResponse(status: 200, body: #"{"id":"abcdefgh","language":null,"pad_environment_ids":[42]}"#)
         }
         let files: Value = .array([

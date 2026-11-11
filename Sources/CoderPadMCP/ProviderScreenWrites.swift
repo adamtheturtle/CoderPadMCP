@@ -213,7 +213,9 @@ private func screenTestQuery(_ arguments: [String: Value]?, candidateEmail: Stri
 
 private func languageCatalogue(name: String, arguments: [String: Value]?, account: MCPAccount) async throws -> CallTool.Result {
     let allowed: Set<String> = name == "list_languages" ? [mcpAccountArgument] : [mcpAccountArgument, "language"]
-    if let error = unknownArgumentError(arguments, allowed: allowed) { return errorResult(error) }
+    if let error = unknownArgumentError(arguments, allowed: allowed) {
+        return errorResult(error)
+    }
     if name == "list_languages" {
         return try await toolResult(apiGet("/api/languages", account: account))
     }
