@@ -170,11 +170,11 @@ import Testing
     #expect(validatedCreatePadLanguage("OBJC") == "objc")
     #expect(validatedCreatePadLanguage("react") == "react")
     #expect(validatedCreatePadLanguage("node") == "node")
-    #expect(validatedCreatePadLanguage("python3") == nil)
-    #expect(validatedCreatePadLanguage("nodejs") == nil)
+    #expect(validatedCreatePadLanguage("python3") == "python3")
+    #expect(validatedCreatePadLanguage("nodejs") == "nodejs")
     #expect(validatedCreatePadLanguage("objective-c") == nil)
     #expect(validatedCreatePadLanguage("definitely-not-a-language") == nil)
-    #expect(createPadLanguageValidationError("python3")?.contains("python") == true)
+    #expect(createPadLanguageValidationError("multifile_python") == nil)
 }
 
 @Test func `pad filenames reject traversal and remain unique`() {

@@ -102,6 +102,49 @@ struct QuestionProjectProviderTests {
         #expect(questionProjectProperties["file_contents"]?["maxItems"] as? Int == 200)
     }
 
+    @Test
+    func `project pad creation retains overlay flags and rejects conflicting seeds`() async throws {
+        let provider = try provider { method, path, _, _, body, _ in
+            #expect(method == "POST")
+            #expect(path == "/api/pads/")
+            let data = try #require(body)
+            let root = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+            #expect(root["language"] as? String == "multifile_python")
+            let files = try #require(root["file_contents"] as? String)
+            #expect(try (JSONSerialization.jsonObject(with: Data(files.utf8)) as? NSArray)?.count == 2)
+            return APIResponse(status: 200, body: #"{"id":"abcdefgh","language":null,"pad_environment_ids":[42]}"#)
+        }
+        let files: Value = .array([
+            .object(["path": .string("main.py"), "contents": .string(""), "hidden": .bool(true)]),
+            .object(["path": .string("old.py"), "deleted": .bool(true)]),
+        ])
+        let valid = try await provider.callTool("create_pad", arguments: [
+            "language": .string("multifile_python"), "file_contents": files,
+        ])
+        #expect(valid.isError != true)
+        for seed: [String: Value] in [["question_id": .int(42)], ["contents": .string("x")]] {
+            let result = try await provider.callTool("create_pad", arguments: seed.merging([
+                "file_contents": files, "dry_run": .bool(true),
+            ]) { _, new in new })
+            #expect(result.isError == true)
+        }
+    }
+
+    @Test(arguments: ["list_languages", "get_language"])
+    func `environment discovery makes read only catalogue requests`(tool: String) async throws {
+        let provider = try provider { method, path, _, query, body, _ in
+            #expect(method == "GET")
+            #expect(path == "/api/languages" + (tool == "get_language" ? "/multifile_python" : ""))
+            #expect(query == [])
+            #expect(body == nil)
+            return APIResponse(status: 200, body: #"{"future_metadata":["starter",null]}"#)
+        }
+        let result = try await provider.callTool(tool, arguments: tool == "get_language" ? ["language": .string("multifile_python")] : [:])
+        #expect(result.isError != true)
+        let invalid = try await provider.callTool("get_language", arguments: ["language": .string("../pads")])
+        #expect(invalid.isError == true)
+    }
+
     private func provider(request: @escaping InterviewRequest) throws -> CoderPadProvider {
         let url = try #require(URL(string: "https://configured.example"))
         let account = try MCPAccount(name: "Project", apiKey: "project-key", baseURL: url, screenAPIKey: nil, screenRegion: "us")
