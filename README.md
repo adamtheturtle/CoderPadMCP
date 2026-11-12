@@ -174,7 +174,7 @@ Creation uses one bounded POST and is never automatically retried.
 `screen_project_archive` returns a credential-free resource link for a candidate project tar.gz archive.
 Read the linked resource to download binary content as an MCP blob.
 Resources use the selected account's Screen key, an 8 MiB ceiling, and a 120-second request timeout, with normal cancellation and API errors.
-The server does not extract or execute archive files.
+Archive files are served without extraction or execution.
 Archive reads require Screen access and are available without enabling writes.
 
 Screen question discovery uses `screen_list_questions`, `screen_get_question`, and `screen_question_insights`.
@@ -197,8 +197,7 @@ Existing project source archives are replaced in the question editor.
 
 `whoami` distinguishes the configured account label from the API-derived `interview_user` display name, pad-creation capability, and analytics identifier.
 When Screen credentials are configured, `screen_identity` includes organization, recruiter, and team identities with default-team flags.
-Identity lookup failures are returned as tool errors.
-Display names and analytics identifiers do not establish user email addresses or organization roles.
+Identity lookup failures are returned as tool errors, and display names and analytics identifiers do not establish user email addresses or organization roles.
 
 Pad creation and updates accept waiting-room privacy, execution, interviewer restrictions, replacement email lists, and coaching settings.
 Creation also accepts take-home mode, its time limit in minutes, and AI assistance.
@@ -215,3 +214,10 @@ Files are sent as a JSON-encoded string under `question`, and cannot be combined
 Creation overlays template files and supports path-only removal entries, with `.cpad` protected.
 Parent-question updates ignore removal entries.
 Omitted arrays and explicit empty arrays retain their different meanings.
+
+### Environment discovery and project pads
+
+Use `list_languages` and `get_language` to inspect available environments and starter code before creating a pad.
+`create_pad` accepts project-template slugs such as `multifile_python` and structured `file_contents` overlays with hidden and deleted flags.
+Starter files, single-file contents, and a question ID are mutually exclusive.
+Use `dry_run: true` to preview a creation request without consuming pad quota.

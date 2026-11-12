@@ -532,9 +532,8 @@ func sanitizedFilePath(_ raw: String?) -> String? {
     let parts = value.split(separator: "/", omittingEmptySubsequences: false)
     guard !parts.isEmpty,
           !parts.contains(where: \.isEmpty),
-          !parts.contains(where: { $0 == "." || $0 == ".." })
-    else { return nil }
-    guard parts.allSatisfy({ $0.utf8.count <= maxPadCodePathComponentBytes }) else { return nil }
+          !parts.contains(where: { $0 == "." || $0 == ".." }),
+          parts.allSatisfy({ $0.utf8.count <= maxPadCodePathComponentBytes }) else { return nil }
 
     let joined = parts.joined(separator: "/")
     return joined.utf8.count <= maxPadCodePathBytes ? joined : nil

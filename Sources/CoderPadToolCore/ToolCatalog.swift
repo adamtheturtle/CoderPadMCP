@@ -181,6 +181,17 @@ public nonisolated(unsafe) let coderPadReadToolDescriptors: [[String: Any]] =
             properties: withAccount(),
         ),
         mcpToolDescriptor(
+            "list_languages", "List available language and project environments. Inspect these before creating a pad.",
+            properties: withAccount(),
+        ),
+        mcpToolDescriptor(
+            "get_language", "Get starter code and environment context for a language key or project-template slug.",
+            properties: withAccount([
+                "language": mcpStringSchema("Environment identifier, for example multifile_python.", minLength: 1, maxLength: 100),
+            ]),
+            required: ["language"],
+        ),
+        mcpToolDescriptor(
             "list_pads",
             "List the account's pads (most recent first). Optional page and sort.",
             properties: withAccount(pagingProperties),
@@ -330,7 +341,7 @@ public nonisolated(unsafe) let coderPadWriteToolDescriptors: [[String: Any]] =
             properties: withAccount([
                 "title": mcpStringSchema("Optional pad title.", maxLength: maxPadTitleCharacters),
                 "language": mcpStringSchema(
-                    "Optional language or framework from the Interview API language list.",
+                    "Optional language key or project-template slug. Use list_languages and get_language for starter-code context.",
                     allowedValues: creatablePadLanguages,
                 ),
                 "question_id": mcpIntSchema(
@@ -354,10 +365,15 @@ public nonisolated(unsafe) let coderPadWriteToolDescriptors: [[String: Any]] =
                     maxLength: 36,
                 ),
                 "dry_run": mcpBoolSchema("Validate and preview the request without creating anything."),
-            ].merging(padCreationControlProperties) { _, new in new }),
+            ].merging(["file_contents": questionProjectProperties["file_contents"] ?? [:]]) { _, new in new }
+                .merging(padCreationControlProperties) { _, new in new }),
             schemaExtras: [
                 "additionalProperties": false,
-                "not": ["required": ["question_id", "contents"]],
+                "not": ["anyOf": [
+                    ["required": ["question_id", "contents"]],
+                    ["required": ["question_id", "file_contents"]],
+                    ["required": ["contents", "file_contents"]],
+                ]],
             ],
             annotations: writeAnnotations(title: "Create pad", destructive: false),
         ),

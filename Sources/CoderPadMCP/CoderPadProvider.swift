@@ -663,6 +663,17 @@ func createPad(arguments: [String: Value]?, account: MCPAccount) async throws ->
         body["team_id"] = teamID
     }
 
+    do {
+        if let files = try questionFilesJSONString(arguments) {
+            guard strictIntArgument(arguments, "question_id") == nil else {
+                return errorResult("question_id and file_contents are mutually exclusive.")
+            }
+            body["file_contents"] = files
+        }
+    } catch {
+        return errorResult(error.message)
+    }
+
     if strictDryRunArgument(arguments) == .value(true) {
         return dryRunResult(method: "POST", path: "/api/pads/", body: body)
     }
