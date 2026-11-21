@@ -117,7 +117,7 @@ API responses are returned as JSON so clients retain fields added by CoderPad wi
 
 - API keys are never included in MCP results.
 - Writes are disabled unless `allowWrites` or `CODERPAD_MCP_ALLOW_WRITES` is enabled.
-- No delete tools are provided.
+- The tool catalogue omits delete operations.
 - Configuration files reject symbolic links, incorrect ownership, and group/world access.
 - Network response sizes and internal pagination are bounded.
 - Errors redact response bodies while retaining a diagnostic fingerprint.
@@ -171,7 +171,7 @@ Omitted settings keep team defaults, and explicit false values and empty lists a
 Dry runs preview the validated request without creating a campaign or returning an invented ID.
 Creation uses one bounded POST and is never automatically retried.
 
-`screen_project_archive` returns a credential-free resource link for a candidate project tar.gz archive.
+`screen_project_archive` returns a credential-free resource link for a tar.gz archive of a candidate's project.
 Read the linked resource to download binary content as an MCP blob.
 Resources use the selected account's Screen key, an 8 MiB ceiling, and a 120-second request timeout, with normal cancellation and API errors.
 Archive files are served without extraction or execution.
